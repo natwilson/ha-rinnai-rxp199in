@@ -1,0 +1,35 @@
+# ESPHome Bluetooth proxy for the Rinnai heater. NOT recommended: bonding
+# through a proxy is unreliable for this device; prefer a local USB adapter.
+# The key line is `bluetooth_proxy: active: true` -- passive mode will NOT work,
+# because the heater needs a real GATT connection (writes + notifications),
+# not just advertisements.
+#
+# Flash this to an ESP32 placed within BLE range of the water heater. Home
+# Assistant will then route the Rinnai integration's connection through it.
+
+esphome:
+  name: rinnai-bt-proxy
+
+esp32:
+  board: esp32dev          # change to your board
+  framework:
+    type: esp-idf          # esp-idf gives the most reliable proxy connections
+
+logger:
+api:
+  encryption:
+    key: !secret api_encryption_key
+ota:
+  - platform: esphome
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 1100ms
+    window: 1100ms
+    active: true
+
+bluetooth_proxy:
+  active: true             # REQUIRED -- enables proxied GATT connections

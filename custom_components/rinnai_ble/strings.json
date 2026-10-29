@@ -1,0 +1,29 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "confirm": {
+        "description": "Set up the discovered Rinnai water heater? It must already be bonded with this Home Assistant's Bluetooth adapter (see the README)."
+      },
+      "user": {
+        "description": "Select the Rinnai water heater to add.",
+        "data": { "address": "Device" }
+      }
+    },
+    "abort": {
+      "no_devices_found": "No Rinnai heater found. Make sure a Bluetooth adapter is in range and the Rinnai app is closed.",
+      "already_configured": "This heater is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "description": "Bonds are stored per adapter, so pin the adapter you paired the heater with if you have more than one. Keep the poll interval at 30 seconds or more for normal use.",
+        "data": {
+          "scan_interval": "Poll interval (seconds)",
+          "adapter": "Bluetooth adapter"
+        }
+      }
+    }
+  }
+}
