@@ -125,7 +125,7 @@ dependencies and can be reused in any Python project, or as the reference for an
 ESP32/ESPHome implementation.
 
 ```bash
-pip install pytest-homeassistant-custom-component
+pip install -r requirements_test.txt
 pytest
 ```
 
