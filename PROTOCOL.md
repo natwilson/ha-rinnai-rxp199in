@@ -158,6 +158,7 @@ nothing past byte 16.
 | 25–26 | Combustion Cycles | ×100 |
 | 27–28 | Pump Hours | ×100 |
 | 29–30 | Pump Cycles | ×100 |
+| 33–34 | Water Through Heater | gallons |
 | 37–38 | Total Heat Energy | ×100 → kcal |
 | 41–42 | Lime Detecting Temperature | °F |
 
@@ -171,14 +172,34 @@ Counters have genuine **100-unit hardware resolution** — the app's round numbe
 | 16 | constant `8` | Water Flow Control Position ("Open")? |
 | 17–18 | always 0 | ? |
 | 31–32 | always 0 | Total Bath Fill Amount? |
-| 33–34 | 23337, slowly rising | ? |
 | 35–36 | always 0 | ? |
-| 39–40 | 2188, slowly rising | ? |
+| 39–40 | 2188, later 2591; did not move during a 13-minute burn | slow counter |
 | 43–48 | `01A7 01A7 0000` | constants / config |
+
+**Water Through Heater (33–34)** rose by 10 during a shower plus recirculation
+run that moved about 10 gallons (cross-checked against Total Heat Energy and the
+temperature rise), and not at all while idle. The lifetime value (30,031 gal over
+500 combustion hours, about 1 gal/min) fits too. It counts recirculated water as
+well as water drawn at a tap.
 
 **Pump Frequency was not found.** All three always-zero candidates stayed zero
 even during a full recirculation run, so either the pump is fixed-speed and
-truly reports 0 Hz, or the field is elsewhere.
+truly reports 0 Hz, or the field is elsewhere. A second recirculation run
+(during the 1.1.0 shower test) again moved no byte that the burner alone does not
+explain. The app exposes a **recirculation motor setting (High / Medium /
+Low)**; it is likely stored somewhere, possibly byte 16. To find it, change the
+setting in the app (with Home Assistant's integration disabled, since only one
+client can connect) and compare raw frames before and after.
+
+### Observed: shower with a recirculation run first
+
+- Recirculation fires the burner and the heater reports pump flow as
+  Water Flow Rate (1.2 gal/min here) with no tap open. `\K` byte 1 = 2 for the
+  run, then back to 1 while combustion continues for the shower.
+- While firing: fan 100–200 Hz, outgoing held within ±3 °F of setpoint, bypass
+  valve 11–22° (35° at idle).
+- After the tap closes: `\K` byte 6 drops to 0 immediately, and the fan runs
+  at 300 Hz (word 0 = `012C`) for about 3 minutes of purge.
 
 ### Worked example
 

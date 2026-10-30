@@ -12,6 +12,7 @@ from homeassistant.const import (
     UnitOfElectricCurrent,
     UnitOfFrequency,
     UnitOfTemperature,
+    UnitOfVolume,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -90,6 +91,15 @@ SENSORS: tuple[SensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.FAHRENHEIT,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
+    # Everything that passes through the heat exchanger, so recirculation runs
+    # count too. Not a substitute for a water meter.
+    SensorEntityDescription(
+        key="water_through_heater", name="Water Through Heater",
+        device_class=SensorDeviceClass.WATER,
+        native_unit_of_measurement=UnitOfVolume.GALLONS,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:water-sync",
+    ),
     SensorEntityDescription(
         key="total_heat_energy", name="Total Heat Energy",
         native_unit_of_measurement="kcal",
@@ -139,6 +149,18 @@ SENSORS: tuple[SensorEntityDescription, ...] = (
     ),
     # Raw frames, disabled by default. Enable them to decode unmapped fields
     # (see PROTOCOL.md) without a packet capture.
+    SensorEntityDescription(
+        key="unknown_l16", name="Unknown L Byte 16",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:help-circle-outline",
+    ),
+    SensorEntityDescription(
+        key="unknown_l39", name="Unknown L Counter 39-40",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:help-circle-outline",
+    ),
     SensorEntityDescription(
         key="raw_k", name="Raw Status Frame K",
         entity_category=EntityCategory.DIAGNOSTIC,

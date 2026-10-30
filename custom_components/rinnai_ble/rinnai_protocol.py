@@ -151,8 +151,12 @@ def parse_L(data: str) -> dict:
         "combustion_cycles": _u16(raw, 25) * 100,
         "pump_hours": _u16(raw, 27) * 100,
         "pump_cycles": _u16(raw, 29) * 100,
+        "water_through_heater": _u16(raw, 33),       # gal, includes recirculation
         "total_heat_energy": _u16(raw, 37) * 100,    # kcal
         "lime_detecting_temp": _u16(raw, 41),        # °F
+        # Not decoded yet; exposed so changes can be spotted (see PROTOCOL.md §5).
+        "unknown_l16": raw[16],
+        "unknown_l39": _u16(raw, 39),
         "raw_l": data,
     }
 

@@ -2,6 +2,18 @@
 
 Newest first. Each entry records *why*, since most of these were hard-won.
 
+## 1.1.0 — Water Through Heater, findings from a live shower test
+- **Water Through Heater** sensor (`\L` bytes 33–34, gallons, lifetime). Rose
+  by 10 during a shower plus recirculation run of about 10 gallons, consistent
+  with Total Heat Energy and the temperature rise. Counts recirculated water
+  too, so it is not a water meter.
+- **Unknown L Byte 16** and **Unknown L Counter 39–40** diagnostic sensors,
+  disabled by default, so changes (for example the app's recirculation motor
+  High/Medium/Low setting) can be spotted without a packet capture.
+- Confirmed live: `\K` byte 1 = 2 during a button-started recirculation run;
+  recirculation fires the burner and reports pump flow; the combustion flag
+  drops to 0 during the 300 Hz post-purge. 42/42 polls succeeded over 21 minutes.
+
 ## 1.0.1 — hard timeouts on every Bluetooth step
 Found on the first real install: setup hung for minutes without ever
 connecting, blocking Home Assistant's startup, because a BlueZ/D-Bus call

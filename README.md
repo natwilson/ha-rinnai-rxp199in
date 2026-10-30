@@ -13,8 +13,8 @@ control would take).
 
 | Type | Entities |
 |---|---|
-| Sensors | Outgoing, Inlet, HEX Outlet, Exhaust and Lime Detecting temperatures, Water Flow Rate, Temperature Rise |
-| Diagnostic sensors | Setpoint, Freeze Protection temperature, Fan Frequency/Current, Bypass Position, Combustion and Pump Cycles/Hours, Total Heat Energy, Diagnostic Code, raw `\K`/`\L` frames (disabled by default) |
+| Sensors | Outgoing, Inlet, HEX Outlet, Exhaust and Lime Detecting temperatures, Water Flow Rate, Temperature Rise, Water Through Heater (lifetime gallons, includes recirculation) |
+| Diagnostic sensors | Setpoint, Freeze Protection temperature, Fan Frequency/Current, Bypass Position, Combustion and Pump Cycles/Hours, Total Heat Energy, Diagnostic Code, raw `\K`/`\L` frames and two not-yet-decoded `\L` fields (disabled by default) |
 | Binary sensors | Combustion, Recirculation Pump, Diagnostic Code Active, Internal Pump Installed |
 
 ## Requirements

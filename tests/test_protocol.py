@@ -97,6 +97,8 @@ class ParseTests(unittest.TestCase):
             },
         )
         self.assertTrue(d["internal_pump_installed"])
+        self.assertEqual(d["water_through_heater"], 23337)
+        self.assertEqual((d["unknown_l16"], d["unknown_l39"]), (8, 2188))
 
     def test_parse_L_short_frame_rejected(self):
         self.assertEqual(R.parse_L(L_EXAMPLE[:60]), {})
