@@ -44,6 +44,12 @@ QUERY_TIMEOUT = 6.0
 HANDSHAKE_TIMEOUT = 5.0
 QUERY_GAP = 0.3             # pause between queries on the link
 MAX_BACKOFF = 300
+# Hard limits on Bluetooth calls. BlueZ/D-Bus calls can otherwise wait forever
+# (seen in the field: setup hung for minutes with no connection made).
+CONNECT_TIMEOUT = 75.0      # whole connect, including bleak-retry-connector retries
+STEP_TIMEOUT = 15.0         # start_notify, pair
+DISCONNECT_TIMEOUT = 10.0
+POLL_TIMEOUT = 60.0         # one full poll cycle on an open link
 
 
 class _Transient(Exception):
@@ -135,19 +141,29 @@ class RinnaiCoordinator(DataUpdateCoordinator[dict]):
             where = f"pinned adapter {self.adapter}" if self._pinned else "any adapter"
             raise _Transient(f"heater not currently visible to {where}")
 
-        _LOGGER.debug("Connecting to Rinnai %s", self.address)
+        stage = "connect"
         try:
-            self._client = await establish_connection(
-                BleakClientWithServiceCache,
-                device,
-                self.address,
-                disconnected_callback=self._on_disconnect,
-                max_attempts=3,
-            )
-            self._reasm.reset()
-            await self._start_notify()
-            if not await self._handshake():
-                raise _Transient("heater did not answer the \\I session handshake")
+            async with asyncio.timeout(CONNECT_TIMEOUT):
+                _LOGGER.debug("Rinnai %s: connecting", self.address)
+                self._client = await establish_connection(
+                    BleakClientWithServiceCache,
+                    device,
+                    self.address,
+                    disconnected_callback=self._on_disconnect,
+                    max_attempts=3,
+                )
+                self._reasm.reset()
+                stage = "subscribe"
+                _LOGGER.debug("Rinnai %s: connected; subscribing", self.address)
+                await self._start_notify()
+                stage = "handshake"
+                _LOGGER.debug("Rinnai %s: subscribed; sending \\I", self.address)
+                if not await self._handshake():
+                    raise _Transient("heater did not answer the \\I session handshake")
+        except TimeoutError as err:
+            await self._teardown()
+            self._schedule_backoff()
+            raise _Transient(f"Bluetooth {stage} step timed out") from err
         except Exception:
             await self._teardown()
             self._schedule_backoff()
@@ -163,15 +179,18 @@ class RinnaiCoordinator(DataUpdateCoordinator[dict]):
         """
         assert self._client is not None
         try:
-            await self._client.start_notify(R.NOTIFY_UUID, self._on_notify)
+            async with asyncio.timeout(STEP_TIMEOUT):
+                await self._client.start_notify(R.NOTIFY_UUID, self._on_notify)
             return
         except BleakError as err:
             if not _is_auth_error(err):
                 raise
         _LOGGER.debug("Notify refused for lack of encryption; trying pair()")
         try:
-            await self._client.pair()
-            await self._client.start_notify(R.NOTIFY_UUID, self._on_notify)
+            async with asyncio.timeout(STEP_TIMEOUT):
+                await self._client.pair()
+            async with asyncio.timeout(STEP_TIMEOUT):
+                await self._client.start_notify(R.NOTIFY_UUID, self._on_notify)
         except Exception as err:  # noqa: BLE001
             raise UpdateFailed(
                 "Heater refused an encrypted connection. It is not bonded with "
@@ -189,7 +208,8 @@ class RinnaiCoordinator(DataUpdateCoordinator[dict]):
         self._reasm.reset()
         if client is not None:
             try:
-                await client.disconnect()
+                async with asyncio.timeout(DISCONNECT_TIMEOUT):
+                    await client.disconnect()
             except Exception:  # noqa: BLE001
                 pass
 
@@ -210,10 +230,11 @@ class RinnaiCoordinator(DataUpdateCoordinator[dict]):
         self._waiting = (None if any_reply else reg, fut)
         self._reasm.reset()
         try:
-            for frag in R.build_write(reg, data):
-                await client.write_gatt_char(R.WRITE_UUID, frag, response=False)
-            return await asyncio.wait_for(fut, timeout or QUERY_TIMEOUT)
-        except asyncio.TimeoutError:
+            async with asyncio.timeout(timeout or QUERY_TIMEOUT):
+                for frag in R.build_write(reg, data):
+                    await client.write_gatt_char(R.WRITE_UUID, frag, response=False)
+                return await fut
+        except TimeoutError:
             _LOGGER.debug("No \\%s reply (%s)", reg, self._reasm.buffered)
             return None
         finally:
@@ -281,7 +302,8 @@ class RinnaiCoordinator(DataUpdateCoordinator[dict]):
             try:
                 if self._client is None or not self._client.is_connected:
                     await self._connect()
-                fresh = await self._poll()
+                async with asyncio.timeout(POLL_TIMEOUT):
+                    fresh = await self._poll()
             except UpdateFailed as err:
                 return self._degraded(str(err), hard=True)
             except _Transient as err:

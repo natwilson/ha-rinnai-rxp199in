@@ -2,6 +2,15 @@
 
 Newest first. Each entry records *why*, since most of these were hard-won.
 
+## 1.0.1 — hard timeouts on every Bluetooth step
+Found on the first real install: setup hung for minutes without ever
+connecting, blocking Home Assistant's startup, because a BlueZ/D-Bus call
+had no timeout of its own. Every Bluetooth step is now bounded: the whole
+connect (75 s, including retries), subscribe/pair (15 s each), disconnect
+(10 s), each query (6 s) and each poll (60 s). A stuck step now fails with
+"Bluetooth <step> step timed out" and goes through the normal backoff.
+Debug logging names each connect stage.
+
 ## 1.0.0 — connection layer rewrite
 The protocol work was solid; the instability was in how the link was managed.
 The coordinator and reassembler were rewritten; the codec's parsers, entities

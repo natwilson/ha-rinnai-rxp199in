@@ -85,6 +85,10 @@ def fast(monkeypatch):
     monkeypatch.setattr(C, "QUERY_TIMEOUT", 0.05)
     monkeypatch.setattr(C, "HANDSHAKE_TIMEOUT", 0.05)
     monkeypatch.setattr(C, "QUERY_GAP", 0)
+    monkeypatch.setattr(C, "CONNECT_TIMEOUT", 0.3)
+    monkeypatch.setattr(C, "STEP_TIMEOUT", 0.1)
+    monkeypatch.setattr(C, "DISCONNECT_TIMEOUT", 0.1)
+    monkeypatch.setattr(C, "POLL_TIMEOUT", 2)
 
 
 @pytest.fixture
@@ -221,3 +225,35 @@ async def test_config_flow_imports(hass):
     from custom_components.rinnai_ble import config_flow
 
     assert config_flow.RinnaiConfigFlow.VERSION == 1
+
+
+async def test_hung_connect_times_out_instead_of_blocking(coord, heater):
+    async def _hang(*_a, **_k):
+        await asyncio.sleep(3600)
+
+    with patch.object(C, "establish_connection", _hang):
+        with pytest.raises(UpdateFailed, match="connect step timed out"):
+            await asyncio.wait_for(coord._async_update_data(), 5)
+    assert coord._backoff > 0
+
+
+async def test_hung_subscribe_and_disconnect_time_out(coord, heater):
+    async def _hang(*_a, **_k):
+        await asyncio.sleep(3600)
+
+    heater.start_notify = _hang
+    heater.disconnect = _hang
+    with pytest.raises(UpdateFailed, match="subscribe step timed out"):
+        await asyncio.wait_for(coord._async_update_data(), 5)
+    assert coord._client is None
+
+
+async def test_hung_write_counts_as_missed_reply(coord, heater):
+    await coord._async_update_data()
+
+    async def _hang(*_a, **_k):
+        await asyncio.sleep(3600)
+
+    heater.write_gatt_char = _hang
+    data = await asyncio.wait_for(coord._async_update_data(), 5)
+    assert data["outgoing_temp"] == 96   # served from cache, not blocked
