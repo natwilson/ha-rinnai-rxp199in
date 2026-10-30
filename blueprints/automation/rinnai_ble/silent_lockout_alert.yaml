@@ -1,0 +1,49 @@
+blueprint:
+  name: Rinnai silent lockout alert
+  description: >
+    Alerts when hot water is flowing but the Rinnai burner has cut out with no
+    fault code (the low-flow overheat lockout that sends cold water to a shower
+    until the tap is closed). Runs a second set of actions once the burner
+    relights or the water stops. Needs the Rinnai RX/RXP (BLE) integration 1.2.0
+    or newer.
+  domain: automation
+  source_url: https://github.com/natwilson/ha-rinnai-rxp199in/blob/main/blueprints/automation/rinnai_ble/silent_lockout_alert.yaml
+  input:
+    lockout_sensor:
+      name: Silent Lockout sensor
+      selector:
+        entity:
+          filter:
+            - integration: rinnai_ble
+              domain: binary_sensor
+              device_class: problem
+    alert_actions:
+      name: Alert actions
+      description: >
+        What to do when a lockout starts, for example a phone notification:
+        "Hot water burner cut out. Turn the water off for a few seconds to reset it."
+      selector:
+        action: {}
+    recovery_actions:
+      name: Recovery actions (optional)
+      description: What to do when the lockout clears.
+      default: []
+      selector:
+        action: {}
+
+mode: single
+
+triggers:
+  - trigger: state
+    entity_id: !input lockout_sensor
+    to: "on"
+
+actions:
+  - sequence: !input alert_actions
+  - wait_for_trigger:
+      - trigger: state
+        entity_id: !input lockout_sensor
+        to: "off"
+    timeout: "01:00:00"
+    continue_on_timeout: false
+  - sequence: !input recovery_actions

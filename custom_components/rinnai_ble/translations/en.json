@@ -7,7 +7,9 @@
       },
       "user": {
         "description": "Select the Rinnai water heater to add.",
-        "data": { "address": "Device" }
+        "data": {
+          "address": "Device"
+        }
       }
     },
     "abort": {
@@ -18,10 +20,11 @@
   "options": {
     "step": {
       "init": {
-        "description": "Bonds are stored per adapter, so pin the adapter you paired the heater with if you have more than one. Keep the poll interval at 30 seconds or more for normal use.",
+        "description": "Bonds are stored per adapter, so pin the adapter you paired the heater with if you have more than one. Keep the poll interval at 30 seconds or more for normal use. The minimum firing rate is from your model's data sheet (15,000 BTU/h for the RXP199iN); it sets the Low-Fire Margin.",
         "data": {
           "scan_interval": "Poll interval (seconds)",
-          "adapter": "Bluetooth adapter"
+          "adapter": "Bluetooth adapter",
+          "min_firing_rate": "Minimum firing rate (BTU/h)"
         }
       }
     }

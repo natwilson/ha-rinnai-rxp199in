@@ -11,10 +11,12 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResu
 from homeassistant.core import callback
 
 from . import rinnai_protocol as R
+from .analysis import DEFAULT_MIN_FIRING_RATE
 from .const import (
     ADAPTER_AUTO,
     CONF_ADAPTER,
     CONF_ADDRESS,
+    CONF_MIN_FIRING_RATE,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -108,6 +110,10 @@ class RinnaiOptionsFlow(OptionsFlow):
                         default=options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                     ): vol.All(vol.Coerce(int), vol.Range(min=10, max=300)),
                     vol.Required(CONF_ADAPTER, default=current_adapter): vol.In(choices),
+                    vol.Required(
+                        CONF_MIN_FIRING_RATE,
+                        default=options.get(CONF_MIN_FIRING_RATE, DEFAULT_MIN_FIRING_RATE),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1000, max=100_000)),
                 }
             ),
         )

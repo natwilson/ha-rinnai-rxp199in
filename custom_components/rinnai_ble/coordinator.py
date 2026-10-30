@@ -25,11 +25,13 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from . import analysis as A
 from . import rinnai_protocol as R
 from .const import (
     ADAPTER_AUTO,
     CONF_ADAPTER,
     CONF_ADDRESS,
+    CONF_MIN_FIRING_RATE,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -72,6 +74,10 @@ class RinnaiCoordinator(DataUpdateCoordinator[dict]):
         # Bonds are stored per adapter, so a pinned adapter is strict.
         self.adapter: str = entry.options.get(CONF_ADAPTER, ADAPTER_AUTO)
         self.serial: str | None = None
+        self.min_firing_rate: float = entry.options.get(
+            CONF_MIN_FIRING_RATE, A.DEFAULT_MIN_FIRING_RATE
+        )
+        self._lockout = A.LockoutDetector()
 
         self._client: BleakClientWithServiceCache | None = None
         self._lock = asyncio.Lock()
@@ -315,11 +321,27 @@ class RinnaiCoordinator(DataUpdateCoordinator[dict]):
         if not fresh:
             return self._degraded("no valid frames returned")
 
-        if "outgoing_temp" in fresh and "inlet_temp" in fresh:
-            fresh["temperature_rise"] = fresh["outgoing_temp"] - fresh["inlet_temp"]
         self._cache.update(fresh)
+        self._derive(time.monotonic())
         self._last_success = time.monotonic()
         return dict(self._cache)
+
+    def _derive(self, now: float) -> None:
+        """Compute values that need more than one register, from the merged cache."""
+        d = self._cache
+        if "outgoing_temp" in d and "inlet_temp" in d:
+            d["temperature_rise"] = d["outgoing_temp"] - d["inlet_temp"]
+        if "hex_outlet_temp" in d and "outgoing_temp" in d:
+            d["hex_overshoot"] = d["hex_outlet_temp"] - d["outgoing_temp"]
+        flow = d.get("water_flow_rate")
+        if flow is not None and "setpoint_temp" in d and "inlet_temp" in d:
+            demand = A.heat_demand(flow, d["setpoint_temp"], d["inlet_temp"])
+            d["heat_demand"] = demand
+            d["firing_margin"] = A.firing_margin(demand, self.min_firing_rate)
+        if flow is not None and "combustion" in d:
+            d["silent_lockout"] = self._lockout.update(
+                flow, d["combustion"], d.get("diagnostic_code_active"), now
+            )
 
     def _degraded(self, reason: str, hard: bool = False) -> dict:
         """Ride out a bad poll on last-good data, or fail once data is stale."""

@@ -15,7 +15,8 @@ control would take).
 |---|---|
 | Sensors | Outgoing, Inlet, HEX Outlet, Exhaust and Lime Detecting temperatures, Water Flow Rate, Temperature Rise, Water Through Heater (lifetime gallons, includes recirculation) |
 | Diagnostic sensors | Setpoint, Freeze Protection temperature, Fan Frequency/Current, Bypass Position, Combustion and Pump Cycles/Hours, Total Heat Energy, Diagnostic Code, raw `\K`/`\L` frames and two not-yet-decoded `\L` fields (disabled by default) |
-| Binary sensors | Combustion, Recirculation Pump, Diagnostic Code Active, Internal Pump Installed |
+| Binary sensors | Combustion, Recirculation Pump, Diagnostic Code Active, Silent Lockout, Internal Pump Installed |
+| Low-flow lockout | Heat Demand (BTU/h), Low-Fire Margin (%), HEX Overshoot, Silent Lockout (see below) |
 
 ## Requirements
 
@@ -82,6 +83,35 @@ Settings → Devices & Services → Rinnai → **Configure**:
 - **Bluetooth adapter:** *Automatic* uses the best-placed local adapter. If you
   have several, pin the one holding the bond. A pinned adapter is strict: the
   integration waits for it rather than roaming to another radio.
+
+## Low-flow lockout alerts
+
+A tankless burner cannot turn down below its **minimum firing rate**
+(15,000 BTU/h on the RXP199iN). When a draw needs less heat than that, the
+heat exchanger overheats and the burner cuts out. Low flow with warm inlet
+water (summer groundwater) is the usual cause. On the RXP199iN this has been
+observed to happen **without a fault code**, with cold water continuing until
+the tap is closed.
+
+- **Heat Demand** = 500 × flow (gal/min) × (setpoint − inlet °F), in BTU/h.
+- **Low-Fire Margin** = how far Heat Demand sits above the minimum firing rate,
+  as a percentage; negative means below it. Unknown when no water is flowing.
+  Set the minimum firing rate for your model in **Configure**.
+- **HEX Overshoot** = heat-exchanger outlet minus delivered temperature. The
+  bypass valve hides overheating from the delivered water, so this rises first.
+- **Silent Lockout** turns on when at least 0.4 gal/min has been flowing with
+  the burner off for 60 seconds and no fault code is active.
+
+For a mixed shower, the heat needed depends on total flow and the shower
+temperature, not the setpoint, so the main levers are flow (supply pressure,
+shower head) rather than the setpoint.
+
+To get notified, import the blueprint:
+
+[![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fnatwilson%2Fha-rinnai-rxp199in%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Frinnai_ble%2Fsilent_lockout_alert.yaml)
+
+A warning for draws running close to the floor is a plain numeric-state
+automation, for example Low-Fire Margin below 10 for 1 minute.
 
 ## How it stays connected
 

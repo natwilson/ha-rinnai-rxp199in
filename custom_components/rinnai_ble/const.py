@@ -3,6 +3,7 @@ CONF_ADDRESS = "address"
 CONF_ADAPTER = "adapter"
 CONF_SCAN_INTERVAL = "scan_interval"
 ADAPTER_AUTO = "auto"
+CONF_MIN_FIRING_RATE = "min_firing_rate"
 DEFAULT_SCAN_INTERVAL = 30  # seconds
 MANUFACTURER = "Rinnai"
 MODEL = "RX/RXP Series"

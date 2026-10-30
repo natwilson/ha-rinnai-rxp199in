@@ -2,6 +2,17 @@
 
 Newest first. Each entry records *why*, since most of these were hard-won.
 
+## 1.2.0 — low-flow lockout detection
+- **Heat Demand** (BTU/h), **Low-Fire Margin** (%), **HEX Overshoot** and a
+  **Silent Lockout** problem sensor, for the summer low-flow overheat cut-out
+  that sends cold water without a fault code. Logic lives in `analysis.py`
+  (no Home Assistant imports) with its own tests.
+- **Minimum firing rate** option (default 15,000 BTU/h, RXP199iN).
+- **Blueprint** `silent_lockout_alert` for notifications on lockout and recovery.
+- **Temperature Rise** now uses the temperature-difference device class, so
+  Celsius users see a correct converted rise (previously converted as an
+  absolute temperature).
+
 ## 1.1.0 — Water Through Heater, findings from a live shower test
 - **Water Through Heater** sensor (`\L` bytes 33–34, gallons, lifetime). Rose
   by 10 during a shower plus recirculation run of about 10 gallons, consistent

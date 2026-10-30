@@ -38,6 +38,12 @@ BINARY_SENSORS: tuple[RinnaiBinaryDescription, ...] = (
         key="fault", data_key="diagnostic_code_active", name="Diagnostic Code Active",
         device_class=BinarySensorDeviceClass.PROBLEM,
     ),
+    # Water flowing with the burner off for 60 s and no fault code: the
+    # low-flow overheat cut-out. Clears only once flow stops.
+    RinnaiBinaryDescription(
+        key="silent_lockout", data_key="silent_lockout", name="Silent Lockout",
+        device_class=BinarySensorDeviceClass.PROBLEM, icon="mdi:water-alert",
+    ),
     # \L bytes 21-22: a capability flag, always 1, not pump run state.
     RinnaiBinaryDescription(
         key="internal_pump", data_key="internal_pump_installed",

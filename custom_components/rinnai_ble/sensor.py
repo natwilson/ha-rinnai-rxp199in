@@ -8,9 +8,11 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
+    PERCENTAGE,
     EntityCategory,
     UnitOfElectricCurrent,
     UnitOfFrequency,
+    UnitOfPower,
     UnitOfTemperature,
     UnitOfVolume,
 )
@@ -137,10 +139,35 @@ SENSORS: tuple[SensorEntityDescription, ...] = (
     ),
     SensorEntityDescription(
         key="temperature_rise", name="Temperature Rise",
-        device_class=SensorDeviceClass.TEMPERATURE,
+        device_class=SensorDeviceClass.TEMPERATURE_DELTA,
         native_unit_of_measurement=UnitOfTemperature.FAHRENHEIT,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:thermometer-chevron-up",
+    ),
+    # Low-flow lockout indicators (see analysis.py). Heat Demand is what the
+    # current draw needs; Low-Fire Margin is how far that sits above the
+    # burner's minimum firing rate, and goes negative below it.
+    SensorEntityDescription(
+        key="heat_demand", name="Heat Demand",
+        native_unit_of_measurement=UnitOfPower.BTU_PER_HOUR,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:fire-circle",
+    ),
+    SensorEntityDescription(
+        key="firing_margin", name="Low-Fire Margin",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:gauge-low",
+    ),
+    # Heat exchanger outlet minus delivered water: the bypass valve diluting
+    # overheated water. Large values precede an overheat cut-out.
+    SensorEntityDescription(
+        key="hex_overshoot", name="HEX Overshoot",
+        device_class=SensorDeviceClass.TEMPERATURE_DELTA,
+        native_unit_of_measurement=UnitOfTemperature.FAHRENHEIT,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:thermometer-alert",
     ),
     SensorEntityDescription(
         key="diagnostic_code", name="Diagnostic Code",
