@@ -1,7 +1,10 @@
 """Sensor entities for the Rinnai BLE heater."""
 from __future__ import annotations
 
+from datetime import datetime
+
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
@@ -18,6 +21,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from . import RinnaiConfigEntry
 from .entity import RinnaiEntity
@@ -208,7 +212,10 @@ async def async_setup_entry(
     entry: RinnaiConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    async_add_entities(RinnaiSensor(entry.runtime_data, d) for d in SENSORS)
+    coordinator = entry.runtime_data
+    async_add_entities(
+        [*(RinnaiSensor(coordinator, d) for d in SENSORS), RinnaiFalseStartsSensor(coordinator)]
+    )
 
 
 class RinnaiSensor(RinnaiEntity, SensorEntity):
@@ -219,3 +226,42 @@ class RinnaiSensor(RinnaiEntity, SensorEntity):
     @property
     def native_value(self):
         return self._value
+
+
+class RinnaiFalseStartsSensor(RinnaiEntity, RestoreSensor):
+    """Fan runs today that ended without the burner lighting (see analysis.py).
+
+    Counted by the integration, so the count is restored across restarts and
+    resets at local midnight.
+    """
+
+    entity_description = SensorEntityDescription(
+        key="false_starts_today", name="False Starts Today",
+        native_unit_of_measurement="starts",
+        state_class=SensorStateClass.TOTAL,
+        icon="mdi:fan-alert",
+    )
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "false_starts_today")
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        data = await self.async_get_last_sensor_data()
+        if last is None or data is None or data.native_value is None:
+            return
+        reset = dt_util.parse_datetime(str(last.attributes.get("last_reset", "")))
+        if reset is not None:
+            self.coordinator.restore_false_starts(
+                dt_util.as_local(reset).date(), int(float(data.native_value))
+            )
+            self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        return self._value
+
+    @property
+    def last_reset(self) -> datetime:
+        return dt_util.start_of_local_day()

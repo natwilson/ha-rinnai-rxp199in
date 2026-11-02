@@ -201,6 +201,17 @@ client can connect) and compare raw frames before and after.
 - After the tap closes: `\K` byte 6 drops to 0 immediately, and the fan runs
   at 300 Hz (word 0 = `012C`) for about 3 minutes of purge.
 
+### Observed: false starts
+
+A brief flow blip (pressure fluctuation, a tap opened for a moment) can start
+the fan at about 360 Hz without the burner ever lighting. Four days of 30 s
+polling showed about 15 such runs: mostly about 30 s, some up to 90 s, with no
+heat exchanger temperature change and **no** 300 Hz purge afterwards. A real
+short burn instead warms the heat exchanger and is followed by the ~3 minute
+purge. The integration detects these with faster polling while the fan runs
+(see `analysis.FalseStartDetector`). The manual does not describe the ignition
+sequence; this is inferred from the data.
+
 ### Worked example
 
 ```
@@ -257,15 +268,19 @@ What is missing is *which bytes encode which command*. `\K` is almost certainly
 the command register. Guessing byte positions means writing unknown commands to
 a gas appliance, which is not worth it.
 
-**To finish it safely**, one capture is enough:
+**Setpoint** can be finished safely with one capture:
 
 1. Start a PacketLogger iOS trace (see §9).
-2. In the Rinnai Central app: press the **recirculation** control.
-3. Separately, change the **setpoint** by a known amount (e.g. 120 → 125).
-4. Export as **BTSnoop** and diff those `\K` writes against the idle `\K` write.
+2. In the Rinnai Central app, change the setpoint by a known amount (e.g. 120 → 125).
+3. Export as **BTSnoop** and diff those `\K` writes against the idle `\K` write.
 
-The bytes that differ are the command encoding. With two or three examples, a
-recirculation `switch` and a setpoint `number` entity become straightforward.
+**Recirculation cannot be captured this way**: the Rinnai Central app has no
+control to start it. Recirculation is started by a paired BLE push button
+(Rinnai RPB200; Flic 2 buttons also pair), where the heater is the client of
+the button, so nothing on this link carries the command. The Flic 2 protocol
+authenticates genuine buttons with a factory signature, so emulating one in
+software is not practical. Automating a physical button (a relay across its
+contacts, or a button pusher) is the practical route.
 
 ---
 

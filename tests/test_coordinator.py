@@ -7,6 +7,7 @@ Needs the Home Assistant test harness:
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 from unittest.mock import patch
 
 import pytest
@@ -221,6 +222,20 @@ async def test_full_setup_creates_entities_and_unloads(hass, heater):
         assert hass.states.get(ent).state == "off"
         ent = reg.async_get_entity_id("sensor", DOMAIN, f"{ADDRESS}_outgoing_temp")
         assert hass.states.get(ent).state == "96"
+        ent = reg.async_get_entity_id("sensor", DOMAIN, f"{ADDRESS}_false_starts_today")
+        assert hass.states.get(ent).state == "0"
+        ent = reg.async_get_entity_id("event", DOMAIN, f"{ADDRESS}_last_false_start")
+        assert hass.states.get(ent).state == "unknown"   # available, nothing fired yet
+
+        for payload in (fan_run(359, 2, hex_f=78), fan_run(0, hex_f=78)):
+            heater.l_payload = payload
+            await entry.runtime_data.async_refresh()
+            await hass.async_block_till_done()
+        state = hass.states.get(ent)
+        assert state.attributes["event_type"] == "false_start"
+        assert state.attributes["max_fan_frequency"] == 359
+        ent = reg.async_get_entity_id("sensor", DOMAIN, f"{ADDRESS}_false_starts_today")
+        assert hass.states.get(ent).state == "1"
 
         assert await hass.config_entries.async_unload(entry.entry_id)
         assert heater.disconnects == 1
@@ -312,3 +327,63 @@ async def test_min_firing_rate_option(hass, heater):
     entry.add_to_hass(hass)
     c = C.RinnaiCoordinator(hass, entry)
     assert c.min_firing_rate == 10000
+
+
+def fan_run(fan_hz: int, flow_tenths: int = 0, hex_f: int | None = None) -> str:
+    """\\L payload with the fan at fan_hz (and optionally flow / HEX outlet °F)."""
+    l = f"{fan_hz:04X}" + L_EXAMPLE[4:]
+    l = l[:8] + f"{flow_tenths:04X}" + l[12:]
+    if hex_f is not None:
+        l = l[:16] + f"{hex_f:04X}" + l[20:]
+    return l
+
+
+async def test_polls_fast_while_active_then_slows(coord, heater):
+    await coord._async_update_data()
+    assert coord.update_interval == coord._base_interval
+    heater.l_payload = fan_run(359, 2)
+    await coord._async_update_data()
+    assert coord.update_interval.total_seconds() == C.FAST_POLL_INTERVAL
+    heater.l_payload = fan_run(0)
+    await coord._async_update_data()
+    assert coord.update_interval == coord._base_interval
+
+
+async def test_fast_poll_option_off(hass, heater):
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_ADDRESS: ADDRESS}, options={"fast_poll": False})
+    entry.add_to_hass(hass)
+    c = C.RinnaiCoordinator(hass, entry)
+    c._cache.update(fan_frequency=359)
+    c._set_pace()
+    assert c.update_interval == c._base_interval
+
+
+async def test_false_start_counted_and_reported(coord, heater):
+    data = await coord._async_update_data()
+    assert data["false_starts_today"] == 0
+    # HEX at 78 °F with 76 °F inlet: cold, so not the purge after a burn.
+    heater.l_payload = fan_run(359, 2, hex_f=78)
+    await coord._async_update_data()
+    heater.l_payload = fan_run(0, hex_f=78)
+    data = await coord._async_update_data()
+    assert data["false_starts_today"] == 1
+    assert data["last_false_start"]["seq"] == 1
+    assert data["last_false_start"]["max_fan_frequency"] == 359
+
+
+async def test_short_burn_is_not_a_false_start(coord, heater):
+    await coord._async_update_data()
+    heater.l_payload, heater.k_payload = fan_run(359, 15), drawing(15, True)[1]
+    await coord._async_update_data()
+    heater.l_payload, heater.k_payload = fan_run(0), K_EXAMPLE
+    data = await coord._async_update_data()
+    assert data["false_starts_today"] == 0
+
+
+async def test_count_restored_only_for_today(coord):
+    from homeassistant.util import dt as dt_util
+
+    coord.restore_false_starts(dt_util.now().date(), 4)
+    assert coord.false_starts_today == 4
+    coord.restore_false_starts(date(2000, 1, 1), 9)
+    assert coord.false_starts_today == 4

@@ -7,7 +7,7 @@ models with the same Bluetooth module will likely work.
 
 The protocol was reverse-engineered from scratch and is documented in
 **[PROTOCOL.md](PROTOCOL.md)**. Read-only for now (see PROTOCOL.md §8 for what
-control would take).
+control would take, and why recirculation can't be started over this link).
 
 ## What you get
 
@@ -17,6 +17,7 @@ control would take).
 | Diagnostic sensors | Setpoint, Freeze Protection temperature, Fan Frequency/Current, Bypass Position, Combustion and Pump Cycles/Hours, Total Heat Energy, Diagnostic Code, raw `\K`/`\L` frames and two not-yet-decoded `\L` fields (disabled by default) |
 | Binary sensors | Combustion, Recirculation Pump, Diagnostic Code Active, Silent Lockout, Internal Pump Installed |
 | Low-flow lockout | Heat Demand (BTU/h), Low-Fire Margin (%), HEX Overshoot, Silent Lockout (see below) |
+| False starts | False Start event, False Starts Today count (see below) |
 
 ## Requirements
 
@@ -83,6 +84,9 @@ Settings → Devices & Services → Rinnai → **Configure**:
 - **Bluetooth adapter:** *Automatic* uses the best-placed local adapter. If you
   have several, pin the one holding the bond. A pinned adapter is strict: the
   integration waits for it rather than roaming to another radio.
+- **Fast polling while active:** on by default. While the fan, burner, pump or
+  flow is active, the heater is read every 5 seconds instead of the poll
+  interval, so short events are caught. Turn it off if your link struggles.
 
 ## Low-flow lockout alerts
 
@@ -113,6 +117,23 @@ To get notified, import the blueprint:
 A warning for draws running close to the floor is a plain numeric-state
 automation, for example Low-Fire Margin below 10 for 1 minute.
 
+## False starts
+
+A brief flow blip, such as a pressure fluctuation or a tap opened for a
+moment, can spin up the fan without the burner ever lighting. You hear the
+blower but get no heat. The integration records each one:
+
+- **False Start** (event entity) fires once per run, with the run's
+  `duration` (s), `max_fan_frequency` (Hz) and `max_flow` (gal/min). Use it as
+  an automation trigger or see it in the logbook.
+- **False Starts Today** counts them, resets at local midnight and survives
+  restarts. Long-term statistics give a daily history.
+
+A run counts as a false start if the fan ran but no combustion, pump run or
+heat exchanger warming was seen. Detection depends on fast polling: an event
+shorter than the poll interval that begins and ends between two idle polls
+can still be missed, so treat the count as a lower bound.
+
 ## How it stays connected
 
 - **One persistent connection**, opened with the `\I` session handshake the
@@ -123,7 +144,7 @@ automation, for example Low-Fire Margin below 10 for 1 minute.
   handshake is re-sent on the same link; the link is only rebuilt after three
   failed polls in a row.
 - **Reconnects back off** (30 s doubling to 5 min) so a busy adapter isn't
-  hammered.
+  hammered. Fast polling stops whenever a poll fails.
 - **Corrupt data is never shown.** Fragments are reassembled by sequence number
   (duplicates are harmless) and every frame's checksum is verified.
 

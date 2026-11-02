@@ -1,11 +1,13 @@
 """Tests for the low-flow lockout helpers. Run with: python -m unittest tests.test_analysis"""
 import importlib.util
 import pathlib
+import sys
 import unittest
 
 _PATH = pathlib.Path(__file__).parents[1] / "custom_components/rinnai_ble/analysis.py"
 _spec = importlib.util.spec_from_file_location("analysis", _PATH)
 A = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = A  # dataclasses look the module up
 _spec.loader.exec_module(A)
 
 
@@ -60,3 +62,47 @@ class LockoutDetectorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FalseStartDetectorTests(unittest.TestCase):
+    # update(fan, combustion, pump, hex, inlet, flow, now)
+
+    def test_fan_run_without_flame_or_heat_is_a_false_start(self):
+        d = A.FalseStartDetector()
+        self.assertIsNone(d.update(0, False, False, 75, 69, 0.0, now=0))
+        self.assertIsNone(d.update(359, False, False, 75, 69, 0.2, now=5))
+        self.assertIsNone(d.update(359, False, False, 76, 69, 0.0, now=10))
+        self.assertEqual(
+            d.update(0, False, False, 75, 69, 0.0, now=35),
+            {"duration": 30, "max_fan_frequency": 359, "max_flow": 0.2},
+        )
+        self.assertIsNone(d.update(0, False, False, 75, 69, 0.0, now=40))  # reported once
+
+    def test_burn_is_not_a_false_start(self):
+        d = A.FalseStartDetector()
+        d.update(359, False, False, 75, 69, 1.5, now=0)
+        d.update(359, True, False, 90, 69, 1.5, now=5)
+        d.update(300, False, False, 100, 69, 0.0, now=60)
+        self.assertIsNone(d.update(0, False, False, 95, 69, 0.0, now=240))
+
+    def test_heat_rise_counts_as_lit_even_if_flag_missed(self):
+        d = A.FalseStartDetector()
+        d.update(359, False, False, 75, 69, 2.8, now=0)
+        d.update(300, False, False, 101, 69, 0.0, now=30)
+        self.assertIsNone(d.update(0, False, False, 90, 69, 0.0, now=200))
+
+    def test_purge_first_seen_while_hot_is_not_counted(self):
+        d = A.FalseStartDetector()
+        d.update(300, False, False, 93, 69, 0.0, now=0)
+        self.assertIsNone(d.update(0, False, False, 88, 69, 0.0, now=150))
+
+    def test_recirculation_is_not_a_false_start(self):
+        d = A.FalseStartDetector()
+        d.update(359, False, True, 75, 69, 1.0, now=0)
+        self.assertIsNone(d.update(0, False, False, 76, 69, 0.0, now=60))
+
+    def test_missing_fan_reading_is_ignored(self):
+        d = A.FalseStartDetector()
+        d.update(359, False, False, 75, 69, 0.0, now=0)
+        self.assertIsNone(d.update(None, None, None, None, None, None, now=5))
+        self.assertIsNotNone(d.update(0, False, False, 75, 69, 0.0, now=30))

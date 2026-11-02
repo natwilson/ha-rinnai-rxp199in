@@ -2,6 +2,20 @@
 
 Newest first. Each entry records *why*, since most of these were hard-won.
 
+## 1.3.0 — false starts and fast polling while active
+- **False Start** event entity and **False Starts Today** sensor. A false
+  start is a fan run with no combustion, pump run or heat exchanger warming:
+  a flow blip woke the heater but the burner never lit. Four days of history
+  on an RXP199iN showed about 15, mostly about 30 s long.
+- **Fast polling while active** (option, on by default): every 5 s while the
+  fan, burner, pump or flow is active, back to the poll interval when idle or
+  after a failed poll. At 30 s, short burns and false starts were
+  indistinguishable.
+- Reconnect backoff now starts from the configured interval, not the current
+  (possibly fast) one.
+- PROTOCOL.md: false-start observations; corrected §8 — the Rinnai app cannot
+  start recirculation (only a paired BLE button can), so it can't be captured.
+
 ## 1.2.0 — low-flow lockout detection
 - **Heat Demand** (BTU/h), **Low-Fire Margin** (%), **HEX Overshoot** and a
   **Silent Lockout** problem sensor, for the summer low-flow overheat cut-out

@@ -20,11 +20,12 @@
   "options": {
     "step": {
       "init": {
-        "description": "Bonds are stored per adapter, so pin the adapter you paired the heater with if you have more than one. Keep the poll interval at 30 seconds or more for normal use. The minimum firing rate is from your model's data sheet (15,000 BTU/h for the RXP199iN); it sets the Low-Fire Margin.",
+        "description": "Bonds are stored per adapter, so pin the adapter you paired the heater with if you have more than one. Keep the poll interval at 30 seconds or more for normal use. The minimum firing rate is from your model's data sheet (15,000 BTU/h for the RXP199iN); it sets the Low-Fire Margin. Fast polling reads the heater every 5 seconds while it is active, so short events such as false starts are caught; turn it off if your Bluetooth link struggles.",
         "data": {
           "scan_interval": "Poll interval (seconds)",
           "adapter": "Bluetooth adapter",
-          "min_firing_rate": "Minimum firing rate (BTU/h)"
+          "min_firing_rate": "Minimum firing rate (BTU/h)",
+          "fast_poll": "Fast polling while the heater is active"
         }
       }
     }

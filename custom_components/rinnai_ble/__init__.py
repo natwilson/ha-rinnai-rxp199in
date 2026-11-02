@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 
 from .coordinator import RinnaiCoordinator
 
-PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.EVENT]
 
 RinnaiConfigEntry = ConfigEntry[RinnaiCoordinator]
 

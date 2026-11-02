@@ -8,6 +8,9 @@ Design, in short:
 * A stalled \\L is first retried after re-sending \\I on the same link. The
   link is only dropped after repeated stalls or a real Bluetooth error, and
   reconnects back off so a busy adapter is not hammered.
+* While the heater is doing anything (fan, flow, burner, pump) it is polled
+  every FAST_POLL_INTERVAL seconds, so short events such as false starts are
+  seen; otherwise at the configured interval.
 """
 from __future__ import annotations
 
@@ -24,6 +27,7 @@ from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from . import analysis as A
 from . import rinnai_protocol as R
@@ -31,6 +35,7 @@ from .const import (
     ADAPTER_AUTO,
     CONF_ADAPTER,
     CONF_ADDRESS,
+    CONF_FAST_POLL,
     CONF_MIN_FIRING_RATE,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
@@ -52,6 +57,7 @@ CONNECT_TIMEOUT = 75.0      # whole connect, including bleak-retry-connector ret
 STEP_TIMEOUT = 15.0         # start_notify, pair
 DISCONNECT_TIMEOUT = 10.0
 POLL_TIMEOUT = 60.0         # one full poll cycle on an open link
+FAST_POLL_INTERVAL = 5      # seconds, while the heater is active
 
 
 class _Transient(Exception):
@@ -78,6 +84,12 @@ class RinnaiCoordinator(DataUpdateCoordinator[dict]):
             CONF_MIN_FIRING_RATE, A.DEFAULT_MIN_FIRING_RATE
         )
         self._lockout = A.LockoutDetector()
+        self._false_starts = A.FalseStartDetector()
+        self._base_interval = timedelta(seconds=interval)
+        self.fast_poll: bool = entry.options.get(CONF_FAST_POLL, True)
+        self.false_starts_today = 0
+        self._false_start_day = dt_util.now().date()
+        self._false_start_seq = 0
 
         self._client: BleakClientWithServiceCache | None = None
         self._lock = asyncio.Lock()
@@ -205,7 +217,7 @@ class RinnaiCoordinator(DataUpdateCoordinator[dict]):
             ) from err
 
     def _schedule_backoff(self) -> None:
-        base = self.update_interval.total_seconds() if self.update_interval else 30
+        base = self._base_interval.total_seconds()
         self._backoff = min(MAX_BACKOFF, self._backoff * 2 if self._backoff else base)
         self._next_connect = time.monotonic() + self._backoff
 
@@ -324,7 +336,27 @@ class RinnaiCoordinator(DataUpdateCoordinator[dict]):
         self._cache.update(fresh)
         self._derive(time.monotonic())
         self._last_success = time.monotonic()
+        self._set_pace()
         return dict(self._cache)
+
+    def _set_pace(self) -> None:
+        """Poll fast while the heater is active, at the base interval otherwise."""
+        d = self._cache
+        active = self.fast_poll and bool(
+            d.get("fan_frequency") or d.get("water_flow_rate")
+            or d.get("combustion") or d.get("pump_running")
+        )
+        self.update_interval = (
+            timedelta(seconds=FAST_POLL_INTERVAL) if active else self._base_interval
+        )
+
+    def restore_false_starts(self, day, count: int) -> None:
+        """Carry today's count over a restart (called by the sensor)."""
+        if day == self._false_start_day:
+            self.false_starts_today += count
+            self._cache["false_starts_today"] = self.false_starts_today
+            if self.data is not None:
+                self.data["false_starts_today"] = self.false_starts_today
 
     def _derive(self, now: float) -> None:
         """Compute values that need more than one register, from the merged cache."""
@@ -343,8 +375,23 @@ class RinnaiCoordinator(DataUpdateCoordinator[dict]):
                 flow, d["combustion"], d.get("diagnostic_code_active"), now
             )
 
+        today = dt_util.now().date()
+        if today != self._false_start_day:
+            self._false_start_day, self.false_starts_today = today, 0
+        event = self._false_starts.update(
+            d.get("fan_frequency"), d.get("combustion"), d.get("pump_running"),
+            d.get("hex_outlet_temp"), d.get("inlet_temp"), flow, now,
+        )
+        if event is not None:
+            self.false_starts_today += 1
+            self._false_start_seq += 1
+            d["last_false_start"] = {**event, "seq": self._false_start_seq}
+            _LOGGER.debug("Rinnai false start: %s", event)
+        d["false_starts_today"] = self.false_starts_today
+
     def _degraded(self, reason: str, hard: bool = False) -> dict:
         """Ride out a bad poll on last-good data, or fail once data is stale."""
+        self.update_interval = self._base_interval
         age = None if self._last_success is None else time.monotonic() - self._last_success
         if not hard and self._cache and age is not None and age < STALE_AFTER:
             _LOGGER.debug("Rinnai poll failed (%s); keeping data from %.0fs ago", reason, age)
