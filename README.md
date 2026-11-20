@@ -188,10 +188,39 @@ Frame L** / **Raw Status Frame K** sensors, put the unit in the state of
 interest, and copy the hex from the entity history **as text**. PROTOCOL.md
 lists what is still unmapped.
 
+## Experimental: does the heater accept commands?
+
+Nothing here controls the heater. There is one developer action,
+`rinnai_ble.experimental_write_k`, for finding out whether it could. It sends
+the normal status query with a single byte changed and returns the status
+before and after. PROTOCOL.md §8 explains the reasoning and the order to run
+the two tests in. From Developer Tools → Actions:
+
+```yaml
+action: rinnai_ble.experimental_write_k
+data:
+  setpoint: 115      # first test: a value below your current setpoint
+  confirm: true
+```
+
+```yaml
+action: rinnai_ble.experimental_write_k
+data:
+  mode: 2            # second test: the value reported while the pump runs
+  confirm: true
+```
+
+`status_changed: true` in the response means the heater acted on the write.
+`replied: false` means it did not answer that frame at all. Either way the
+result is logged at warning level. The action accepts nothing except these two
+bytes and a short list of values.
+
 ## Disclaimer
 
-Not affiliated with or endorsed by Rinnai. Read-only by design: it only sends the
-same status queries the Rinnai app sends, never control commands. Use at your own risk.
+Not affiliated with or endorsed by Rinnai. Read-only in normal operation: it
+only sends the same status queries the Rinnai app sends. The experimental
+action above is the one exception and never runs unless you call it. Use at
+your own risk.
 
 ## License
 

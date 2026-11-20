@@ -178,6 +178,36 @@ def parse_K(data: str) -> dict:
     }
 
 
+K_LENGTH = 9  # bytes
+K_QUERY = "0" * (K_LENGTH * 2)  # what the app sends on every poll
+K_MODE_BYTE = 1
+K_SETPOINT_BYTE = 4
+# Setpoints the front panel itself offers, capped at 125 °F for the experiment.
+K_EXPERIMENT_SETPOINTS = (98, 100, 102, 104, 106, 108, 110, 115, 120, 125)
+K_EXPERIMENT_MODES = (1, 2)  # the only two values the heater has ever reported
+
+
+def build_k_experiment(*, mode: int | None = None, setpoint: int | None = None) -> str:
+    r"""\K payload for the write experiment in PROTOCOL.md §8.
+
+    The result differs from the app's all-zero query in exactly one byte, and
+    only in a value the heater itself has reported at that position. Anything
+    else is refused: this is a gas appliance and the command layout is unknown.
+    """
+    if (mode is None) == (setpoint is None):
+        raise ValueError("give exactly one of mode or setpoint")
+    payload = bytearray(K_LENGTH)
+    if mode is not None:
+        if mode not in K_EXPERIMENT_MODES:
+            raise ValueError(f"mode must be one of {K_EXPERIMENT_MODES}")
+        payload[K_MODE_BYTE] = mode
+    else:
+        if setpoint not in K_EXPERIMENT_SETPOINTS:
+            raise ValueError(f"setpoint must be one of {K_EXPERIMENT_SETPOINTS}")
+        payload[K_SETPOINT_BYTE] = setpoint
+    return payload.hex().upper()
+
+
 def parse_P(data: str) -> dict:
     r"""\P diagnostic code. All zeros means no active code."""
     active = bool(data.strip("0"))

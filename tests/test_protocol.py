@@ -119,6 +119,29 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(R.parse_N("0" * 10 + "1234567890" + "0" * 68), {"serial": "1234567890"})
         self.assertEqual(R.parse_N("0" * 88), {"serial": "0000000000"})
 
+class KExperimentTests(unittest.TestCase):
+    """The write experiment may only change one known byte of the app's query."""
+
+    def test_mode_changes_only_byte_1(self):
+        self.assertEqual(R.build_k_experiment(mode=2), "000200000000000000")
+
+    def test_setpoint_changes_only_byte_4(self):
+        self.assertEqual(R.build_k_experiment(setpoint=115), "000000007300000000")
+
+    def test_one_byte_away_from_the_app_query(self):
+        for kwargs in ({"mode": 1}, {"mode": 2}, {"setpoint": 98}, {"setpoint": 125}):
+            data = bytes.fromhex(R.build_k_experiment(**kwargs))
+            self.assertEqual(len(data), R.K_LENGTH)
+            self.assertEqual(sum(1 for b in data if b), 1)
+
+    def test_refuses_anything_else(self):
+        for kwargs in (
+            {}, {"mode": 2, "setpoint": 115}, {"mode": 0}, {"mode": 3},
+            {"setpoint": 0}, {"setpoint": 113}, {"setpoint": 130}, {"setpoint": 140},
+        ):
+            with self.assertRaises(ValueError):
+                R.build_k_experiment(**kwargs)
+
 
 if __name__ == "__main__":
     unittest.main()

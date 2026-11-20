@@ -2,6 +2,16 @@
 
 Newest first. Each entry records *why*, since most of these were hard-won.
 
+## 1.4.0 — opt-in one-byte `\K` write experiment
+- **`rinnai_ble.experimental_write_k`** action. Sends the app's all-zero `\K`
+  query with exactly one byte changed (mode byte 1, or setpoint byte 4) and
+  returns the status before and after, to learn whether `\K` accepts commands.
+  Refuses every other byte and value, and needs `confirm: true`. The
+  integration stays read-only unless the action is called.
+- Why now: recirculation cannot be captured (1.3.0), so the only software
+  route left is to test whether the read layout is also the write layout.
+  PROTOCOL.md §8 has the procedure; results are not in yet.
+
 ## 1.3.0 — false starts and fast polling while active
 - **False Start** event entity and **False Starts Today** sensor. A false
   start is a fan run with no combustion, pump run or heat exchanger warming:

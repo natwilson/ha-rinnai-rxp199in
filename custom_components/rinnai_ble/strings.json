@@ -29,5 +29,25 @@
         }
       }
     }
+  },
+  "services": {
+    "experimental_write_k": {
+      "name": "Experimental \\K write",
+      "description": "Developer experiment, not a control feature. Sends the status query with exactly one byte changed, to find out whether the heater accepts commands on this register. See PROTOCOL.md section 8 before using it.",
+      "fields": {
+        "mode": {
+          "name": "Mode byte",
+          "description": "Value for byte 1. The heater reports 1 when idle and 2 while the recirculation pump runs. Give this or a setpoint, not both."
+        },
+        "setpoint": {
+          "name": "Setpoint byte",
+          "description": "Value for byte 4 in °F. Use a setpoint below the current one for the first test. Give this or a mode, not both."
+        },
+        "confirm": {
+          "name": "Confirm",
+          "description": "Must be on. This writes an unverified command to a gas appliance."
+        }
+      }
+    }
   }
 }

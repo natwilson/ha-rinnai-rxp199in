@@ -8,3 +8,4 @@ CONF_FAST_POLL = "fast_poll"
 DEFAULT_SCAN_INTERVAL = 30  # seconds
 MANUFACTURER = "Rinnai"
 MODEL = "RX/RXP Series"
+SERVICE_EXPERIMENTAL_WRITE_K = "experimental_write_k"

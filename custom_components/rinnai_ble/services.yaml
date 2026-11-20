@@ -1,0 +1,19 @@
+experimental_write_k:
+  fields:
+    mode:
+      example: 2
+      selector:
+        select:
+          options:
+            - "1"
+            - "2"
+    setpoint:
+      example: 115
+      selector:
+        select:
+          options: ["98", "100", "102", "104", "106", "108", "110", "115", "120", "125"]
+    confirm:
+      required: true
+      default: false
+      selector:
+        boolean:

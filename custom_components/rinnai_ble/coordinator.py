@@ -26,6 +26,7 @@ from bleak_retry_connector import BleakClientWithServiceCache, establish_connect
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -58,6 +59,7 @@ STEP_TIMEOUT = 15.0         # start_notify, pair
 DISCONNECT_TIMEOUT = 10.0
 POLL_TIMEOUT = 60.0         # one full poll cycle on an open link
 FAST_POLL_INTERVAL = 5      # seconds, while the heater is active
+K_EXPERIMENT_SETTLE = 2.0   # seconds between an experimental write and the read-back
 
 
 class _Transient(Exception):
@@ -271,6 +273,42 @@ class RinnaiCoordinator(DataUpdateCoordinator[dict]):
         # valid frame in response means the session is open.
         reply = await self._query("I", "0" * 26, any_reply=True, timeout=HANDSHAKE_TIMEOUT)
         return reply is not None
+
+    # ---- Experimental write (PROTOCOL.md §8) ---------------------------------
+
+    async def async_experimental_write_k(self, data: str) -> dict:
+        r"""Write one \K payload and report the status before and after.
+
+        Callers must build ``data`` with ``rinnai_protocol.build_k_experiment``,
+        which is what keeps this to one-byte changes of known values.
+        """
+        async with self._lock:
+            try:
+                if self._client is None or not self._client.is_connected:
+                    await self._connect()
+                async with asyncio.timeout(POLL_TIMEOUT):
+                    before = await self._read("K", R.K_QUERY)
+                    await asyncio.sleep(QUERY_GAP)
+                    reply = await self._query("K", data)
+                    await asyncio.sleep(K_EXPERIMENT_SETTLE)
+                    after = await self._read("K", R.K_QUERY)
+            except (UpdateFailed, _Transient) as err:
+                raise HomeAssistantError(str(err)) from err
+            except Exception as err:  # noqa: BLE001  (bleak / D-Bus errors)
+                await self._teardown()
+                raise HomeAssistantError(f"{type(err).__name__}: {err}") from err
+        _LOGGER.warning(
+            "Rinnai experimental \\K write %s: before=%s reply=%s after=%s",
+            data, before, reply, after,
+        )
+        return {
+            "sent": data,
+            "before": before,
+            "reply": reply,
+            "after": after,
+            "replied": reply is not None,
+            "status_changed": None not in (before, after) and before != after,
+        }
 
     # ---- Polling -------------------------------------------------------------
 

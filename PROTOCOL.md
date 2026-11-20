@@ -260,7 +260,8 @@ past fault records by writing `\N` with an index is plausible but unconfirmed.
 
 ## 8. Control — not implemented, and why
 
-Everything shipped is read-only. The write path itself is proven: our query
+Everything shipped is read-only, apart from the opt-in experiment at the end of
+this section. The write path itself is proven: our query
 frames, fragmentation and checksums reproduce the app's writes byte-for-byte, so
 a **correct** command will be accepted.
 
@@ -281,6 +282,30 @@ the button, so nothing on this link carries the command. The Flic 2 protocol
 authenticates genuine buttons with a factory signature, so emulating one in
 software is not practical. Automating a physical button (a relay across its
 contacts, or a button pusher) is the practical route.
+
+### The one-byte write experiment (1.4.0)
+
+One cheap test has not been run: whether the heater treats non-zero bytes in a
+`\K` write as commands. The app's query is `\K` with 18 zeros, sent on every
+poll, so the all-zero frame is known to be harmless. The
+`rinnai_ble.experimental_write_k` action sends that same frame with **exactly
+one byte changed**, to a value the heater has itself reported at that position,
+then reads the status back:
+
+| Test | Frame data | Accepted if |
+|---|---|---|
+| Setpoint | `00 00 00 00 73 00 00 00 00` (115 °F) | byte 4 of the next status reads `0x73` and the unit display shows 115 |
+| Recirculation | `00 02 00 00 00 00 00 00 00` | byte 1 reads `2` and the pump starts |
+
+Run the setpoint test first, with a value **below** the current setpoint: the
+result is visible on the unit's display and cannot scald anyone. If the heater
+ignores it, the read layout is not the write layout and the recirculation test
+will tell you nothing new. Set the setpoint back afterwards from the unit.
+
+This is still a guess about a gas appliance, which is why the action refuses
+anything except those two bytes and those values (mode 1 or 2; a front-panel
+setpoint from 98 to 125 °F) and needs `confirm: true`. Results so far: **not yet
+run.** Record them here.
 
 ---
 

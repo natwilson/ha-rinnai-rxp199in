@@ -35,6 +35,8 @@ class FakeHeater:
         self.notify = None
         self.reasm = R.Reassembler()
         self.writes: list[str] = []
+        self.k_writes: list[str] = []   # data of every \K write
+        self.obey_k = False             # True: nonzero \K bytes are applied as commands
         self.answer_l = True            # False: \L silently ignored
         self.l_needs_handshake = False  # \L ignored until the next \I
         self.answer_i = True
@@ -60,8 +62,16 @@ class FakeHeater:
             if self.drop_after < 0:
                 self.is_connected = False
                 raise BleakError("[org.bluez.Error.NotConnected] Not Connected")
-        for reg, _data in self.reasm.feed(bytes(data)):
+        for reg, payload in self.reasm.feed(bytes(data)):
             self.writes.append(reg)
+            if reg == "K":
+                self.k_writes.append(payload)
+                if self.obey_k:
+                    status = bytearray.fromhex(self.k_payload)
+                    for i, value in enumerate(bytes.fromhex(payload)):
+                        if value:
+                            status[i] = value
+                    self.k_payload = status.hex().upper()
             asyncio.get_running_loop().call_soon(self._respond, reg)
 
     def _respond(self, reg: str) -> None:
@@ -387,3 +397,21 @@ async def test_count_restored_only_for_today(coord):
     assert coord.false_starts_today == 4
     coord.restore_false_starts(date(2000, 1, 1), 9)
     assert coord.false_starts_today == 4
+
+
+async def test_experimental_write_reports_an_ignored_command(coord, heater, monkeypatch):
+    monkeypatch.setattr(C, "K_EXPERIMENT_SETTLE", 0)
+    result = await coord.async_experimental_write_k(R.build_k_experiment(mode=2))
+    assert heater.k_writes == [R.K_QUERY, "000200000000000000", R.K_QUERY]
+    assert result["replied"] is True
+    assert result["status_changed"] is False
+    assert result["before"] == result["after"] == K_EXAMPLE
+
+
+async def test_experimental_write_reports_an_accepted_command(coord, heater, monkeypatch):
+    monkeypatch.setattr(C, "K_EXPERIMENT_SETTLE", 0)
+    heater.obey_k = True
+    result = await coord.async_experimental_write_k(R.build_k_experiment(setpoint=115))
+    assert result["status_changed"] is True
+    assert R.parse_K(result["before"])["setpoint_temp"] == 120
+    assert R.parse_K(result["after"])["setpoint_temp"] == 115
