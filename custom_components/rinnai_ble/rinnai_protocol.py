@@ -182,8 +182,9 @@ K_LENGTH = 9  # bytes
 K_QUERY = "0" * (K_LENGTH * 2)  # what the app sends on every poll
 K_MODE_BYTE = 1
 K_SETPOINT_BYTE = 4
-# Setpoints the front panel itself offers, capped at 125 °F for the experiment.
-K_EXPERIMENT_SETPOINTS = (98, 100, 102, 104, 106, 108, 110, 115, 120, 125)
+# Setpoints the front panel itself offers (manual Table 29). Above 120 °F the
+# heater also needs parameter 01b; 130 °F and up is a scald hazard at the tap.
+K_EXPERIMENT_SETPOINTS = (98, 100, 102, 104, 106, 108, 110, 115, 120, 125, 130, 135, 140)
 K_EXPERIMENT_MODES = (1, 2)  # the only two values the heater has ever reported
 
 

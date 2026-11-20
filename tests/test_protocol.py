@@ -129,7 +129,7 @@ class KExperimentTests(unittest.TestCase):
         self.assertEqual(R.build_k_experiment(setpoint=115), "000000007300000000")
 
     def test_one_byte_away_from_the_app_query(self):
-        for kwargs in ({"mode": 1}, {"mode": 2}, {"setpoint": 98}, {"setpoint": 125}):
+        for kwargs in ({"mode": 1}, {"mode": 2}, {"setpoint": 98}, {"setpoint": 140}):
             data = bytes.fromhex(R.build_k_experiment(**kwargs))
             self.assertEqual(len(data), R.K_LENGTH)
             self.assertEqual(sum(1 for b in data if b), 1)
@@ -137,7 +137,7 @@ class KExperimentTests(unittest.TestCase):
     def test_refuses_anything_else(self):
         for kwargs in (
             {}, {"mode": 2, "setpoint": 115}, {"mode": 0}, {"mode": 3},
-            {"setpoint": 0}, {"setpoint": 113}, {"setpoint": 130}, {"setpoint": 140},
+            {"setpoint": 0}, {"setpoint": 113}, {"setpoint": 141}, {"setpoint": 150},
         ):
             with self.assertRaises(ValueError):
                 R.build_k_experiment(**kwargs)

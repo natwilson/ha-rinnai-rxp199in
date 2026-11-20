@@ -304,7 +304,7 @@ will tell you nothing new. Set the setpoint back afterwards from the unit.
 
 This is still a guess about a gas appliance, which is why the action refuses
 anything except those two bytes and those values (mode 1 or 2; a front-panel
-setpoint from 98 to 125 °F) and needs `confirm: true`. Results so far: **not yet
+setpoint from 98 to 140 °F) and needs `confirm: true`. Results so far: **not yet
 run.** Record them here.
 
 ---
