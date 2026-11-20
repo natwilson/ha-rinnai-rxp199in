@@ -34,9 +34,12 @@ commands are described under [Control (experimental)](#control-experimental).
 
 - Home Assistant 2025.2 or newer.
 - A Bluetooth adapter on the Home Assistant host within range of the heater.
-  **A local USB adapter is strongly preferred**; bonding through an ESPHome
-  proxy was unreliable on the development unit, though one user reports it
-  working with the adapter pinned to the proxy (issue #1).
+  **A local USB adapter is strongly preferred.** Bonding through an ESPHome
+  proxy was unreliable on the development unit. Another user had a proxy work
+  for about five days, then lose the bond twice in a week, after which the
+  heater refused new pairing attempts from it (ESP32 error 85) until the proxy
+  was factory-reset; a local USB adapter has been stable for them since
+  (issue #1).
 - Ideally an adapter **dedicated** to the heater, or at least one that is not
   also holding connections to other devices. The heater keeps one connection
   open permanently, and older CSR8510 dongles handle only one connection
@@ -70,7 +73,7 @@ power on
 agent on
 default-agent
 scan on                      # wait for "Rinnai RX  <serial>"
-# --- press the Bluetooth button on the front of the heater now (LED blinks) ---
+# --- press the Bluetooth button on the front of the heater now (LED blinks or goes solid) ---
 pair AA:BB:CC:DD:EE:FF
 trust AA:BB:CC:DD:EE:FF
 info AA:BB:CC:DD:EE:FF       # want Paired: yes and Bonded: yes
@@ -79,9 +82,18 @@ quit
 
 - Without the button press, pairing fails with `AuthenticationFailed` on any
   adapter. There is no passkey.
+- If pairing is refused while the LED is only blinking, hold the button until
+  the LED is solid and try again. One RX199i accepted pairing only with the
+  LED solid (issue #1).
 - **Bonds are per adapter.** Change dongles and you must bond again.
-- If the heater was re-paired with the phone or lost power, it may have
-  forgotten the bond. Symptoms: connections drop immediately with
+- **The heater appears to hold one bond at a time.** While bonded to one
+  adapter (or proxy) it refused another until the old bond was cleared.
+- With no bond stored, or in pairing mode, some units advertise as
+  `P Rinnai RX  <serial>`; once bonded the name is plain
+  `Rinnai RX  <serial>`. Both are discovered.
+- If the heater was re-paired with the phone, it has probably forgotten the
+  bond. A power cut may do the same, though one unit kept its bond through a
+  60 s power cut and reconnected by itself. Symptoms: connections drop immediately with
   `NotConnected`, or the integration reports it "refused an encrypted
   connection". Bond again.
 

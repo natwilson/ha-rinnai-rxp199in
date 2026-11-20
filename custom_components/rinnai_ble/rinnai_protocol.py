@@ -145,7 +145,7 @@ def parse_L(data: str) -> dict:
         "exhaust_temp": _u16(raw, 12),
         "freeze_protection_temp": _u16(raw, 14),
         "bypass_position": _u16(raw, 19),            # degrees
-        "internal_pump_installed": bool(_u16(raw, 21)),  # capability flag
+        "internal_pump_installed": bool(_u16(raw, 21)),  # also 1 on a non-pump RX199i
         # Counters have 100-unit hardware resolution.
         "combustion_hours": _u16(raw, 23) * 100,
         "combustion_cycles": _u16(raw, 25) * 100,

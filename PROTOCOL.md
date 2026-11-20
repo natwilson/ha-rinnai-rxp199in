@@ -153,7 +153,7 @@ nothing past byte 16.
 | Bytes | Field | Unit |
 |---|---|---|
 | 19–20 | Bypass Flow Control Position | degrees |
-| 21–22 | Internal pump **installed** (capability flag, always 1) | bool |
+| 21–22 | Labelled "internal pump installed"; always 1. **Not a reliable pump indicator:** a non-pump RX199i also reports 1 (issue #1), while its pump hours and cycles stay 0 | bool |
 | 23–24 | Combustion Hours | ×100 |
 | 25–26 | Combustion Cycles | ×100 |
 | 27–28 | Pump Hours | ×100 |
