@@ -2,6 +2,11 @@
 
 Newest first. Each entry records *why*, since most of these were hard-won.
 
+## 1.4.2 — Rinnai icon
+- Ships the Rinnai icon and logo in `custom_components/rinnai_ble/brand/`, which
+  Home Assistant 2026.3 and newer use for custom integrations. Older versions
+  keep showing the placeholder.
+
 ## 1.4.1 — discover heaters that advertise as `P Rinnai RX …`
 - Some units (reported on an RX199i, issue #1) advertise the name
   `P Rinnai RX  <serial>` and no service UUID, so neither the manifest matcher
