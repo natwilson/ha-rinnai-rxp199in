@@ -2,15 +2,20 @@
 
 Newest first. Each entry records *why*, since most of these were hard-won.
 
-## 1.4.0 — opt-in one-byte `\K` write experiment
+## 1.4.0 — recirculation start and setpoint, via an opt-in `\K` write
 - **`rinnai_ble.experimental_write_k`** action. Sends the app's all-zero `\K`
   query with exactly one byte changed (mode byte 1, or setpoint byte 4) and
-  returns the status before and after, to learn whether `\K` accepts commands.
-  Refuses every other byte and value, and needs `confirm: true`. The
-  integration stays read-only unless the action is called.
-- Why now: recirculation cannot be captured (1.3.0), so the only software
-  route left is to test whether the read layout is also the write layout.
-  PROTOCOL.md §8 has the procedure; results are not in yet.
+  returns the status before and after. Refuses every other byte and value, and
+  needs `confirm: true`. The integration stays read-only unless it is called.
+- **It works.** On an RXP199iN, `mode: 2` starts a recirculation run that the
+  heater ends itself (73 s from a cold loop), and `setpoint` sets the setpoint
+  (120-140 °F confirmed on the unit display; below 120 is clamped in crossover
+  mode; ignored while water is flowing). PROTOCOL.md §8 has the full results.
+- Why: recirculation cannot be captured from the app (1.3.0), so the only
+  software route left was to test whether the read layout is also the write
+  layout. It is, for these two bytes.
+- README: dashboard screenshot, the dashboard itself in `extras/dashboard.yaml`,
+  and a script example for a recirculation button.
 
 ## 1.3.0 — false starts and fast polling while active
 - **False Start** event entity and **False Starts Today** sensor. A false

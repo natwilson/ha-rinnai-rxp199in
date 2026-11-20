@@ -5,9 +5,19 @@ water heater directly over its built-in Bluetooth. No cloud, no Wi-Fi module, no
 Rinnai account. Developed and tested against an **RXP199iN**; other RX/RXP
 models with the same Bluetooth module will likely work.
 
+It shows what the heater is doing right now (burner, flow, temperatures,
+setpoint, recirculation pump), tracks water use and heater health over time,
+and warns about low-flow lockouts and false starts. As of 1.4.0 it can also
+**start a recirculation run** and **change the setpoint** through an opt-in
+experimental action.
+
+![Example dashboard: live status, 24-hour temperature and flow graphs, water use and health](images/dashboard.png)
+
+The dashboard above is included as [extras/dashboard.yaml](extras/dashboard.yaml).
+
 The protocol was reverse-engineered from scratch and is documented in
-**[PROTOCOL.md](PROTOCOL.md)**. Read-only for now (see PROTOCOL.md §8 for what
-control would take, and why recirculation can't be started over this link).
+**[PROTOCOL.md](PROTOCOL.md)**. Normal operation is read-only; the two control
+commands are described under [Control (experimental)](#control-experimental).
 
 ## What you get
 
@@ -18,6 +28,7 @@ control would take, and why recirculation can't be started over this link).
 | Binary sensors | Combustion, Recirculation Pump, Diagnostic Code Active, Silent Lockout, Internal Pump Installed |
 | Low-flow lockout | Heat Demand (BTU/h), Low-Fire Margin (%), HEX Overshoot, Silent Lockout (see below) |
 | False starts | False Start event, False Starts Today count (see below) |
+| Control (experimental) | `rinnai_ble.experimental_write_k` action: start recirculation, set the setpoint (see below) |
 
 ## Requirements
 
@@ -188,39 +199,69 @@ Frame L** / **Raw Status Frame K** sensors, put the unit in the state of
 interest, and copy the hex from the entity history **as text**. PROTOCOL.md
 lists what is still unmapped.
 
-## Experimental: does the heater accept commands?
+## Control (experimental)
 
-Nothing here controls the heater. There is one developer action,
-`rinnai_ble.experimental_write_k`, for finding out whether it could. It sends
-the normal status query with a single byte changed and returns the status
-before and after. PROTOCOL.md §8 explains the reasoning and the order to run
-the two tests in. From Developer Tools → Actions:
+The integration polls read-only. One opt-in action,
+`rinnai_ble.experimental_write_k`, sends the normal status query with a single
+byte changed. On an RXP199iN this turned out to be a working command:
+
+| Call | Result on the test unit |
+|---|---|
+| `mode: 2` | Starts a recirculation run: pump and burner on within about 10 s. The heater ends the run itself (about 70 s from a cold loop, less when the pipes are warm). |
+| `setpoint: <°F>` | Sets the setpoint to that value. The display follows. |
 
 ```yaml
 action: rinnai_ble.experimental_write_k
 data:
-  setpoint: 115      # first test: a value below your current setpoint
+  mode: 2            # start recirculation
   confirm: true
 ```
 
 ```yaml
 action: rinnai_ble.experimental_write_k
 data:
-  mode: 2            # second test: the value reported while the pump runs
+  setpoint: 120      # one of 98-110 (by 2), 115, 120, 125, 130, 135, 140
   confirm: true
 ```
 
-`status_changed: true` in the response means the heater acted on the write.
-`replied: false` means it did not answer that frame at all. Either way the
-result is logged at warning level. The action accepts nothing except these two
-bytes and a short list of values.
+The response holds the status before and after; `status_changed: true` means
+the heater acted on the write. What to expect:
+
+- **The heater applies its own rules.** In crossover recirculation mode the
+  minimum setpoint is 120 °F, so lower values land on 120. Setpoint writes are
+  ignored while hot water is flowing, exactly as on the front panel. Values
+  above 120 °F need the heater's maximum-temperature parameter raised.
+- **A recirculation request is a request.** The heater may ignore it when the
+  loop is still hot or the pump ran a few minutes ago (the manual lists a rest
+  interval of 4 to 10 minutes in crossover mode).
+- **130 °F and above scalds in seconds.** Nothing here lowers it again for you.
+- Tested on one heater. It accepts only these two bytes and these values, and
+  needs `confirm: true`.
+
+A script makes it a dashboard button or an automation step:
+
+```yaml
+script:
+  rinnai_start_recirculation:
+    alias: "Rinnai: start recirculation"
+    icon: mdi:pump
+    sequence:
+      - action: rinnai_ble.experimental_write_k
+        data:
+          mode: 2
+          confirm: true
+        response_variable: result
+```
+
+For example, call it when a dishwasher or a warm wash cycle starts, with a
+condition that it last ran more than 10 minutes ago.
 
 ## Disclaimer
 
 Not affiliated with or endorsed by Rinnai. Read-only in normal operation: it
 only sends the same status queries the Rinnai app sends. The experimental
-action above is the one exception and never runs unless you call it. Use at
-your own risk.
+action above is the one exception and never runs unless you call it. It writes
+to a gas appliance using a reverse-engineered protocol. Use at your own risk.
 
 ## License
 

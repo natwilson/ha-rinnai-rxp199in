@@ -123,8 +123,8 @@ reconnect; the integration does this since 1.0.0.
 | `\P` | none | 98 chars | Diagnostic/error codes. All zeros = no active code |
 
 `\K` and `\I` are the only registers the app writes **with a data payload**,
-which strongly suggests `\K` is also the **command** register (setpoint changes,
-recirculation). The command byte positions are **not yet known** — see §8.
+and `\K` is also the **command** register: a write with byte 1 or byte 4 set
+starts recirculation or changes the setpoint (confirmed in 1.4.0, see §8).
 
 ---
 
@@ -258,10 +258,13 @@ past fault records by writing `\N` with an index is plausible but unconfirmed.
 
 ---
 
-## 8. Control — not implemented, and why
+## 8. Control
 
-Everything shipped is read-only, apart from the opt-in experiment at the end of
-this section. The write path itself is proven: our query
+**Update (1.4.0): `\K` accepts commands.** Recirculation start and setpoint
+both work through the one-byte write described at the end of this section. The
+reasoning below is kept as the record of how that was found.
+
+Everything shipped is read-only, apart from that opt-in action. The write path itself is proven: our query
 frames, fragmentation and checksums reproduce the app's writes byte-for-byte, so
 a **correct** command will be accepted.
 
@@ -285,27 +288,49 @@ contacts, or a button pusher) is the practical route.
 
 ### The one-byte write experiment (1.4.0)
 
-One cheap test has not been run: whether the heater treats non-zero bytes in a
-`\K` write as commands. The app's query is `\K` with 18 zeros, sent on every
-poll, so the all-zero frame is known to be harmless. The
-`rinnai_ble.experimental_write_k` action sends that same frame with **exactly
-one byte changed**, to a value the heater has itself reported at that position,
-then reads the status back:
+The question was whether the heater treats non-zero bytes in a `\K` write as
+commands. The app's query is `\K` with 18 zeros, sent on every poll, so the
+all-zero frame is known to be harmless. The `rinnai_ble.experimental_write_k`
+action sends that same frame with **exactly one byte changed**, to a value the
+heater reports at that position, then reads the status back.
 
-| Test | Frame data | Accepted if |
+**Result: the read layout is the write layout** for both bytes tried
+(RXP199iN, 2026-11-19/20).
+
+| Write | Frame data | Observed |
 |---|---|---|
-| Setpoint | `00 00 00 00 73 00 00 00 00` (115 °F) | byte 4 of the next status reads `0x73` and the unit display shows 115 |
-| Recirculation | `00 02 00 00 00 00 00 00 00` | byte 1 reads `2` and the pump starts |
+| Recirculation | `00 02 00 00 00 00 00 00 00` | Reply has byte 1 = `2`. Pump and burner on within ~10 s at 1.0-1.2 gal/min. The heater ends the run and byte 1 returns to `1`. |
+| Setpoint 140 | `00 00 00 00 8C 00 00 00 00` | Reply has byte 4 = `0x8C`; unit display shows 140. |
+| Setpoint 125 | `00 00 00 00 7D 00 00 00 00` | Byte 4 = `0x7D`; display shows 125. |
+| Setpoint 110 or 115 | `…6E…` / `…73…` | Byte 4 = `0x78` (120): clamped, see below. |
+| Setpoint, burner firing | any | Reply unchanged: ignored. |
 
-Run the setpoint test first, with a value **below** the current setpoint: the
-result is visible on the unit's display and cannot scald anyone. If the heater
-ignores it, the read layout is not the write layout and the recirculation test
-will tell you nothing new. Set the setpoint back afterwards from the unit.
+Details:
 
-This is still a guess about a gas appliance, which is why the action refuses
-anything except those two bytes and those values (mode 1 or 2; a front-panel
-setpoint from 98 to 140 °F) and needs `confirm: true`. Results so far: **not yet
-run.** Record them here.
+- **Zero bytes mean "no change".** The polls that follow a write are all-zero
+  and do not cancel a running recirculation or reset the setpoint.
+- **Recirculation run length** is the heater's decision. From a cold loop
+  (inlet and outlet 70 °F, idle 11 h) the run was 73 s: outlet at setpoint
+  after ~20 s, flow tapering from 1.2 to 0.8 gal/min just before the stop.
+  Four minutes after a long shower it was 32 s; with the loop already hot,
+  13 s. This matches the manual's crossover mode, where the pump stops when
+  the thermal bypass valve closes.
+- **A request can be dropped.** One `mode 2` write sent 4.5 minutes after a
+  previous run was acknowledged (reply byte 1 = `2`) but had reverted by the
+  next poll with no pump run seen. The manual gives a pump rest interval of
+  10 minutes (Economy) or 4 minutes (Comfort) in crossover mode; hot water
+  use began 30 s later, so the cause is not certain.
+- **The 120 °F floor** is the manual's minimum setpoint for crossover
+  recirculation mode, not a protocol limit. A heater set up differently should
+  accept the lower values; untested.
+- **No setpoint change while water flows** also matches the front panel, which
+  refused changes during the same shower.
+- **Not tested:** `mode 1` as a stop command (runs ended before there was
+  anything to stop), every other byte of `\K`, and any other model.
+
+The action still refuses anything except those two bytes and those values
+(mode 1 or 2; a front-panel setpoint from 98 to 140 °F) and needs
+`confirm: true`. 130 °F and above is a scald hazard at the tap.
 
 ---
 

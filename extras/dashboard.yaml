@@ -1,0 +1,263 @@
+# Example dashboard for the Rinnai BLE integration (the one in the README screenshot).
+# Settings -> Dashboards -> Add dashboard -> New dashboard from scratch, then
+# Edit -> Raw configuration editor and paste this in.
+# Entity IDs assume the device is named "Rinnai Water Heater".
+# The "Start recirculation" tile needs the script from the README; delete the
+# tile if you do not use it.
+views:
+- type: sections
+  max_columns: 2
+  sections:
+  - type: grid
+    cards:
+    - type: heading
+      heading: Right now
+      icon: mdi:water-boiler
+    - type: markdown
+      content: <ha-alert alert-type="error"><b>Silent lockout:</b> water is flowing
+        but the burner is not firing.</ha-alert>
+      visibility:
+      - condition: state
+        entity: binary_sensor.rinnai_water_heater_silent_lockout
+        state: 'on'
+    - type: markdown
+      content: <ha-alert alert-type="error"><b>Diagnostic code active.</b> Check the
+        code on the heater.</ha-alert>
+      visibility:
+      - condition: state
+        entity: binary_sensor.rinnai_water_heater_diagnostic_code_active
+        state: 'on'
+    - type: tile
+      entity: binary_sensor.rinnai_water_heater_combustion
+      name: Burner
+      vertical: false
+      grid_options:
+        columns: 6
+      icon: mdi:fire
+    - type: tile
+      entity: binary_sensor.rinnai_water_heater_silent_lockout
+      name: Silent lockout
+      vertical: false
+      grid_options:
+        columns: 6
+      icon: mdi:shield-check
+    - type: tile
+      entity: binary_sensor.rinnai_water_heater_diagnostic_code_active
+      name: Diagnostics
+      vertical: false
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: binary_sensor.rinnai_water_heater_recirculation_pump
+      name: Recirc pump
+      vertical: false
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: script.rinnai_start_recirculation
+      name: Start recirculation
+      icon: mdi:pump
+      vertical: false
+      hide_state: true
+      tap_action:
+        action: perform-action
+        perform_action: script.rinnai_start_recirculation
+      icon_tap_action:
+        action: perform-action
+        perform_action: script.rinnai_start_recirculation
+      grid_options:
+        columns: 12
+    - type: gauge
+      entity: sensor.rinnai_water_heater_outgoing_temperature
+      name: Hot water out
+      min: 60
+      max: 140
+      unit: °F
+      needle: true
+      segments:
+      - from: 60
+        color: '#4A90D9'
+      - from: 110
+        color: '#43A047'
+      - from: 130
+        color: '#FB8C00'
+      grid_options:
+        columns: 6
+    - type: gauge
+      entity: sensor.rinnai_water_heater_temperature_rise
+      name: Temperature rise
+      min: 0
+      max: 80
+      unit: °F
+      needle: true
+      segments:
+      - from: 0
+        color: '#4A90D9'
+      - from: 30
+        color: '#43A047'
+      - from: 70
+        color: '#FB8C00'
+      grid_options:
+        columns: 6
+    - type: gauge
+      entity: sensor.rinnai_water_heater_water_flow_rate
+      name: Flow
+      min: 0
+      max: 5
+      unit: gal/min
+      needle: true
+      segments:
+      - from: 0
+        color: '#4A90D9'
+      grid_options:
+        columns: 6
+    - type: gauge
+      entity: sensor.rinnai_water_heater_heat_demand
+      name: Heat demand
+      min: 0
+      max: 100000
+      unit: BTU/h
+      needle: true
+      segments:
+      - from: 0
+        color: '#FB8C00'
+      - from: 15000
+        color: '#43A047'
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.rinnai_water_heater_inlet_temperature
+      name: Water in
+      vertical: false
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.rinnai_water_heater_setpoint_temperature
+      name: Setpoint
+      vertical: false
+      grid_options:
+        columns: 6
+      icon: mdi:target
+    - type: tile
+      entity: sensor.rinnai_water_heater_low_fire_margin
+      name: Low-fire margin
+      vertical: false
+      grid_options:
+        columns: 6
+      icon: mdi:speedometer-slow
+    - type: tile
+      entity: sensor.rinnai_water_heater_run_time
+      name: Current run
+      vertical: false
+      grid_options:
+        columns: 6
+      icon: mdi:timer-outline
+  - type: grid
+    cards:
+    - type: heading
+      heading: Last 24 hours
+      icon: mdi:chart-line
+    - type: history-graph
+      title: Temperatures
+      hours_to_show: 24
+      entities:
+      - entity: sensor.rinnai_water_heater_outgoing_temperature
+        name: Out
+      - entity: sensor.rinnai_water_heater_inlet_temperature
+        name: In
+    - type: statistics-graph
+      title: Peak flow
+      entities:
+      - entity: sensor.rinnai_water_heater_water_flow_rate
+        name: Flow
+      days_to_show: 1
+      period: 5minute
+      chart_type: line
+      stat_types:
+      - max
+      hide_legend: true
+  - type: grid
+    cards:
+    - type: heading
+      heading: Water use
+      icon: mdi:water
+    - type: statistic
+      entity: sensor.rinnai_water_heater_water_through_heater
+      name: Today
+      stat_type: change
+      period:
+        calendar:
+          period: day
+      grid_options:
+        columns: 6
+    - type: statistic
+      entity: sensor.rinnai_water_heater_water_through_heater
+      name: This week
+      stat_type: change
+      period:
+        calendar:
+          period: week
+      grid_options:
+        columns: 6
+    - type: statistics-graph
+      title: Gallons per day
+      entities:
+      - entity: sensor.rinnai_water_heater_water_through_heater
+        name: Gallons
+      days_to_show: 14
+      period: day
+      chart_type: bar
+      stat_types:
+      - change
+      hide_legend: true
+  - type: grid
+    cards:
+    - type: heading
+      heading: Health
+      icon: mdi:heart-pulse
+    - type: tile
+      entity: sensor.rinnai_water_heater_hex_overshoot
+      name: HEX overshoot
+      vertical: false
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.rinnai_water_heater_lime_detecting_temperature
+      name: Lime sensor
+      vertical: false
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.rinnai_water_heater_exhaust_temperature
+      name: Exhaust
+      vertical: false
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.rinnai_water_heater_water_through_heater
+      name: Lifetime water
+      vertical: false
+      grid_options:
+        columns: 6
+      icon: mdi:counter
+    - type: tile
+      entity: sensor.rinnai_water_heater_false_starts_today
+      name: False starts today
+      vertical: false
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: event.rinnai_water_heater_false_start
+      name: Last false start
+      vertical: false
+      grid_options:
+        columns: 6
+    - type: statistics-graph
+      title: False starts per day
+      entities:
+      - sensor.rinnai_water_heater_false_starts_today
+      stat_types:
+      - change
+      period: day
+      days_to_show: 14
+      chart_type: bar
