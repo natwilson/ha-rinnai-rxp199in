@@ -2,7 +2,9 @@
   "domain": "rinnai_ble",
   "name": "Rinnai RX/RXP Water Heater (BLE)",
   "bluetooth": [
-    { "service_uuid": "c0850001-eca2-441e-9f57-cfab262fe9c0", "connectable": true }
+    { "service_uuid": "c0850001-eca2-441e-9f57-cfab262fe9c0", "connectable": true },
+    { "local_name": "Rinnai RX*", "connectable": true },
+    { "local_name": "P Rinnai RX*", "connectable": true }
   ],
   "codeowners": ["@natwilson"],
   "config_flow": true,
@@ -12,5 +14,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/natwilson/ha-rinnai-rxp199in/issues",
   "requirements": [],
-  "version": "1.4.0"
+  "version": "1.4.1"
 }

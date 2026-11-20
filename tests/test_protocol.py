@@ -119,6 +119,18 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(R.parse_N("0" * 10 + "1234567890" + "0" * 68), {"serial": "1234567890"})
         self.assertEqual(R.parse_N("0" * 88), {"serial": "0000000000"})
 
+class NameTests(unittest.TestCase):
+    def test_usual_name(self):
+        self.assertTrue(R.is_rinnai_name("Rinnai RX  2406264331"))
+
+    def test_p_prefixed_name_from_issue_1(self):
+        self.assertTrue(R.is_rinnai_name("P Rinnai RX  2601144139"))
+
+    def test_other_devices(self):
+        for name in (None, "", "Rinnai", "Govee H5075", "RX 100"):
+            self.assertFalse(R.is_rinnai_name(name))
+
+
 class KExperimentTests(unittest.TestCase):
     """The write experiment may only change one known byte of the app's query."""
 

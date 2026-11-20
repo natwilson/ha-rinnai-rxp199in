@@ -178,6 +178,16 @@ def parse_K(data: str) -> dict:
     }
 
 
+def is_rinnai_name(name: str | None) -> bool:
+    """True for a heater's advertised local name.
+
+    Usually ``Rinnai RX  <serial>``. Some units advertise ``P Rinnai RX
+    <serial>`` and no service UUID at all (issue #1, an RX199i), so the name
+    has to be matched anywhere in the string.
+    """
+    return "Rinnai RX" in (name or "")
+
+
 K_LENGTH = 9  # bytes
 K_QUERY = "0" * (K_LENGTH * 2)  # what the app sends on every poll
 K_MODE_BYTE = 1

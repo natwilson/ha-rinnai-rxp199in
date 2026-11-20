@@ -26,7 +26,7 @@ from .const import (
 
 def _is_rinnai(info: BluetoothServiceInfoBleak) -> bool:
     uuids = {u.lower() for u in info.service_uuids}
-    return R.SVC_UUID in uuids or (info.name or "").startswith("Rinnai")
+    return R.SVC_UUID in uuids or R.is_rinnai_name(info.name)
 
 
 class RinnaiConfigFlow(ConfigFlow, domain=DOMAIN):

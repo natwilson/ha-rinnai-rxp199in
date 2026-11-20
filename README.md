@@ -35,7 +35,8 @@ commands are described under [Control (experimental)](#control-experimental).
 - Home Assistant 2025.2 or newer.
 - A Bluetooth adapter on the Home Assistant host within range of the heater.
   **A local USB adapter is strongly preferred**; bonding through an ESPHome
-  proxy is unreliable for this device.
+  proxy was unreliable on the development unit, though one user reports it
+  working with the adapter pinned to the proxy (issue #1).
 - Ideally an adapter **dedicated** to the heater, or at least one that is not
   also holding connections to other devices. The heater keeps one connection
   open permanently, and older CSR8510 dongles handle only one connection

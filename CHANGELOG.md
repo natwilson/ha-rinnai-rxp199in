@@ -2,6 +2,15 @@
 
 Newest first. Each entry records *why*, since most of these were hard-won.
 
+## 1.4.1 — discover heaters that advertise as `P Rinnai RX …`
+- Some units (reported on an RX199i, issue #1) advertise the name
+  `P Rinnai RX  <serial>` and no service UUID, so neither the manifest matcher
+  nor the manual picker found them. The name is now matched anywhere in the
+  string, and the manifest has local-name matchers for both forms.
+- Same report: **Internal Pump Installed** reads on for that non-pump RX199i,
+  so that flag may not mean what its name says. Not changed yet; more data
+  needed.
+
 ## 1.4.0 — recirculation start and setpoint, via an opt-in `\K` write
 - **`rinnai_ble.experimental_write_k`** action. Sends the app's all-zero `\K`
   query with exactly one byte changed (mode byte 1, or setpoint byte 4) and
