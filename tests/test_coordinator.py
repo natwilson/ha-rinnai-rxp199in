@@ -612,7 +612,7 @@ async def test_silence_means_in_use_elsewhere_and_its_return_reconnects(
     coord._check_advertising()
     assert coord.in_use_elsewhere is True
     assert coord.link_state == "in_use_elsewhere"
-    assert coord.seconds_since_advertisement == 120
+    assert coord.seconds_since_advertisement == pytest.approx(120)
     coord._next_connect = clock[0] + 300
     with pytest.raises(UpdateFailed, match="another device"):
         await coord._async_update_data()
