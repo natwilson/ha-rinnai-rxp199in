@@ -24,6 +24,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from . import RinnaiConfigEntry
+from .coordinator import FAILURE_STAGES, LINK_STATES
 from .entity import RinnaiEntity
 
 SENSORS: tuple[SensorEntityDescription, ...] = (
@@ -214,7 +215,11 @@ async def async_setup_entry(
 ) -> None:
     coordinator = entry.runtime_data
     async_add_entities(
-        [*(RinnaiSensor(coordinator, d) for d in SENSORS), RinnaiFalseStartsSensor(coordinator)]
+        [
+            *(RinnaiSensor(coordinator, d) for d in SENSORS),
+            RinnaiFalseStartsSensor(coordinator),
+            *(RinnaiHealthSensor(coordinator, d) for d in HEALTH_SENSORS),
+        ]
     )
 
 
@@ -226,6 +231,52 @@ class RinnaiSensor(RinnaiEntity, SensorEntity):
     @property
     def native_value(self):
         return self._value
+
+
+# Connection health. These read the coordinator itself, not heater data, and
+# stay available while the heater is unreachable: that is when they matter.
+HEALTH_SENSORS: tuple[SensorEntityDescription, ...] = (
+    SensorEntityDescription(
+        key="link_state", name="Bluetooth Link State",
+        device_class=SensorDeviceClass.ENUM, options=LINK_STATES,
+        entity_category=EntityCategory.DIAGNOSTIC, icon="mdi:bluetooth",
+    ),
+    SensorEntityDescription(
+        key="last_failure_stage", name="Last Connection Failure",
+        device_class=SensorDeviceClass.ENUM, options=FAILURE_STAGES,
+        entity_category=EntityCategory.DIAGNOSTIC, icon="mdi:bluetooth-off",
+    ),
+    SensorEntityDescription(
+        key="connections", name="Bluetooth Connections",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_category=EntityCategory.DIAGNOSTIC, icon="mdi:bluetooth-connect",
+    ),
+    SensorEntityDescription(
+        key="last_good_frame", name="Last Good Frame",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+)
+
+
+class RinnaiHealthSensor(RinnaiEntity, SensorEntity):
+    def __init__(self, coordinator, description: SensorEntityDescription) -> None:
+        super().__init__(coordinator, description.key)
+        self.entity_description = description
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    @property
+    def native_value(self):
+        return getattr(self.coordinator, self._key)
+
+    @property
+    def extra_state_attributes(self):
+        if self._key != "last_failure_stage":
+            return None
+        return {"reason": self.coordinator.last_failure}
 
 
 class RinnaiFalseStartsSensor(RinnaiEntity, RestoreSensor):

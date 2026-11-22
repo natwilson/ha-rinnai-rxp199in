@@ -53,6 +53,42 @@ Notes:
 - The device stops advertising while connected, so a lingering `bluetoothctl`
   session will block Home Assistant from connecting.
 - Only one central at a time. Keep the phone app closed during normal operation.
+  The front-panel Bluetooth LED is solid while a central is connected.
+- Pair from the **interactive** `bluetoothctl` session with an agent
+  registered. The one-shot `bluetoothctl pair <addr>` never completed with the
+  heater in pairing mode (2026-11-22): rejected attempts returned
+  `AuthenticationFailed` at once, attempts in pairing mode hung until killed.
+- **More than one bond can be stored.** 2026-11-22, RXP199iN: with the host
+  bonded and disconnected, the Rinnai Central app connected with its own
+  earlier pairing (no button press), was disconnected with the app's
+  Disconnect button, and the host then reconnected and subscribed on its
+  existing bond with no re-pairing and no errors. Two earlier "lost bond"
+  episodes that day were not the heater's doing: one followed the host's
+  record being removed after a transient `\I` silence, the other was a
+  central that did not request encryption (see below).
+- Whether a *new* pairing displaces an existing bond is open. One RX199i
+  refused a second adapter until the first bond was cleared (issue #1).
+- The app keeps its connection while it is in the background. Its
+  Disconnect button releases the heater, and so does force-closing the app:
+  after a force-close the heater was advertising again and the host
+  reconnected on its existing bond at the first attempt (2026-11-22).
+- The heater advertised as `P Rinnai RX …` around presses of its Bluetooth
+  button and flipped between the two forms during pairing attempts. It may
+  mean "pairing mode" rather than "no bond stored"; treat it as a hint.
+- The front-panel Bluetooth LED is solid while a central is connected and
+  off while the heater is free. It is not a precondition for connecting: the
+  host reconnected with the LED off, and the LED then went solid.
+- Pairing-mode feedback (owner's observation): a single beep when a pairing
+  completes, a double beep when pairing mode times out.
+- With a good bond the link can still come up unencrypted, and the subscribe
+  is refused until the central asks for security (`pair()` in bleak on the
+  already-bonded device). A central must request encryption itself on every
+  connection rather than treat that refusal as a lost bond.
+- The first subscribe after a re-pair has also failed with ATT error `0x0E`
+  (Unlikely Error); the next attempt succeeded.
+- Right after a fresh bond the first `\I` went unanswered (link up,
+  subscribed, no reply); a retry about a minute later was answered. Retry
+  `\I` before concluding the bond is bad.
 
 ---
 

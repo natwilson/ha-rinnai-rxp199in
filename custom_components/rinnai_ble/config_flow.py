@@ -18,6 +18,7 @@ from .const import (
     CONF_ADDRESS,
     CONF_FAST_POLL,
     CONF_MIN_FIRING_RATE,
+    CONF_ON_DEMAND,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -117,6 +118,9 @@ class RinnaiOptionsFlow(OptionsFlow):
                     ): vol.All(vol.Coerce(int), vol.Range(min=1000, max=100_000)),
                     vol.Required(
                         CONF_FAST_POLL, default=options.get(CONF_FAST_POLL, True)
+                    ): bool,
+                    vol.Required(
+                        CONF_ON_DEMAND, default=options.get(CONF_ON_DEMAND, False)
                     ): bool,
                 }
             ),

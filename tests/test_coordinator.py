@@ -14,6 +14,7 @@ import pytest
 from bleak.exc import BleakError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.rinnai_ble import coordinator as C
@@ -40,6 +41,11 @@ class FakeHeater:
         self.answer_l = True            # False: \L silently ignored
         self.l_needs_handshake = False  # \L ignored until the next \I
         self.answer_i = True
+        self.ignore_i = 0               # ignore this many \\I writes, then answer
+        self.silent = False             # connects and subscribes, answers nothing
+        self.refuse_notify = False      # subscribe rejected: link not encrypted
+        self.encrypt_on_pair = False    # pair() on the bonded device encrypts the link
+        self.pair_calls = 0
         self.duplicate = False          # duplicate a middle fragment of every reply
         self.drop_after = None          # raise on the Nth write
         self.l_payload = L_EXAMPLE
@@ -47,9 +53,14 @@ class FakeHeater:
         self.disconnects = 0
 
     async def start_notify(self, _uuid, cb):
+        if self.refuse_notify:
+            raise BleakError("[org.bluez.Error.NotPermitted] Insufficient Authentication")
         self.notify = cb
 
     async def pair(self):
+        self.pair_calls += 1
+        if self.encrypt_on_pair:
+            self.refuse_notify = False
         return True
 
     async def disconnect(self):
@@ -75,7 +86,12 @@ class FakeHeater:
             asyncio.get_running_loop().call_soon(self._respond, reg)
 
     def _respond(self, reg: str) -> None:
+        if self.silent:
+            return
         if reg == "I":
+            if self.ignore_i > 0:
+                self.ignore_i -= 1
+                return
             if not self.answer_i:
                 return
             self.l_needs_handshake = False
@@ -98,7 +114,7 @@ def fast(monkeypatch):
     monkeypatch.setattr(C, "QUERY_TIMEOUT", 0.05)
     monkeypatch.setattr(C, "HANDSHAKE_TIMEOUT", 0.05)
     monkeypatch.setattr(C, "QUERY_GAP", 0)
-    monkeypatch.setattr(C, "CONNECT_TIMEOUT", 0.3)
+    monkeypatch.setattr(C, "CONNECT_TIMEOUT", 1.0)
     monkeypatch.setattr(C, "STEP_TIMEOUT", 0.1)
     monkeypatch.setattr(C, "DISCONNECT_TIMEOUT", 0.1)
     monkeypatch.setattr(C, "POLL_TIMEOUT", 2)
@@ -170,7 +186,7 @@ async def test_dropped_link_rides_on_cache_then_goes_stale(coord, heater, monkey
     assert coord._client is None
 
     heater.drop_after = None
-    heater.answer_i = False                   # heater keeps refusing the session
+    heater.silent = True                      # heater keeps refusing the session
     real = C.time.monotonic
     monkeypatch.setattr(C.time, "monotonic", lambda: real() + C.STALE_AFTER + 1)
     coord._next_connect = 0
@@ -179,10 +195,12 @@ async def test_dropped_link_rides_on_cache_then_goes_stale(coord, heater, monkey
 
 
 async def test_failed_handshake_backs_off(coord, heater):
-    heater.answer_i = False
+    heater.silent = True
     with pytest.raises(UpdateFailed, match="handshake"):
         await coord._async_update_data()
     assert coord._backoff > 0
+    assert coord.last_failure_stage == "handshake"
+    assert heater.writes.count("I") == C.HANDSHAKE_ATTEMPTS
     with pytest.raises(UpdateFailed, match="waiting"):
         await coord._async_update_data()
 
@@ -415,3 +433,293 @@ async def test_experimental_write_reports_an_accepted_command(coord, heater, mon
     assert result["status_changed"] is True
     assert R.parse_K(result["before"])["setpoint_temp"] == 120
     assert R.parse_K(result["after"])["setpoint_temp"] == 115
+
+
+# ---- 1.5.0: connection robustness ---------------------------------------------
+
+
+async def test_handshake_is_retried_on_the_same_link(coord, heater):
+    heater.ignore_i = 2
+    orig = coord._handshake                   # \\K must not rescue this one
+
+    async def _no_status(attempts=1, *, accept_status=False):
+        return await orig(attempts, accept_status=False)
+
+    coord._handshake = _no_status
+    data = await coord._async_update_data()
+    assert data["outgoing_temp"] == 96
+    assert heater.writes.count("I") == 3
+    assert heater.disconnects == 0
+
+
+async def test_status_reply_counts_as_an_open_session(coord, heater):
+    heater.answer_i = False                   # \\I never answered, \\K is
+    data = await coord._async_update_data()
+    assert data["outgoing_temp"] == 96
+    assert heater.disconnects == 0
+    assert coord.connections == 1
+
+
+async def test_unencrypted_link_is_secured_with_pair_and_is_not_a_lost_bond(coord, heater):
+    # Seen on the real heater: good bond, subscribe refused until pair() is called.
+    heater.refuse_notify = True
+    heater.encrypt_on_pair = True
+    data = await coord._async_update_data()
+    assert data["outgoing_temp"] == 96
+    assert heater.pair_calls == 1
+    assert coord.bond_lost is False
+    assert coord.last_failure_stage == "none"
+
+
+async def test_refused_encryption_reports_lost_bond(hass, coord, heater):
+    from homeassistant.helpers import issue_registry as ir
+
+    heater.refuse_notify = True
+    with pytest.raises(UpdateFailed, match="not bonded"):
+        await coord._async_update_data()
+    assert heater.pair_calls == 1             # tried once; still refused
+    assert coord.bond_lost is True
+    assert coord.last_failure_stage == "not_bonded"
+    assert coord.link_state == "bond_lost"
+    issue_id = f"bond_lost_{ADDRESS}"
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is not None
+
+    heater.refuse_notify = False              # bonded again
+    coord._next_connect = 0
+    await coord._async_update_data()
+    assert coord.bond_lost is False
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_silent_links_with_unbonded_name_mean_lost_bond(coord, heater):
+    heater.silent = True
+    coord._adv_name = "P Rinnai RX  1234567890"
+    for n in range(C.SILENT_LINKS_BOND_HINTED):
+        assert coord.bond_lost is False
+        coord._next_connect = 0
+        with pytest.raises(UpdateFailed):
+            await coord._async_update_data()
+    assert coord.bond_lost is True
+
+
+async def test_one_silent_link_is_not_a_lost_bond(coord, heater):
+    heater.silent = True
+    with pytest.raises(UpdateFailed):
+        await coord._async_update_data()
+    assert coord.bond_lost is False
+    heater.silent = False
+    coord._next_connect = 0
+    await coord._async_update_data()
+    assert coord._silent_links == 0
+
+
+async def test_release_link_disconnects_and_stays_off(coord, heater):
+    await coord._async_update_data()
+    await coord.async_release_link(15)
+    assert heater.disconnects == 1
+    assert coord.released and coord.link_state == "released"
+    writes = len(heater.writes)
+    data = await coord._async_update_data()   # served from cache, heater untouched
+    assert data["outgoing_temp"] == 96
+    assert len(heater.writes) == writes
+
+    await coord.async_reconnect_now()
+    assert not coord.released
+    assert len(heater.writes) > writes
+    assert coord.link_state == "connected"
+
+
+async def test_release_ends_by_itself(coord, heater, monkeypatch):
+    await coord._async_update_data()
+    await coord.async_release_link(1)
+    real = C.time.monotonic
+    monkeypatch.setattr(C.time, "monotonic", lambda: real() + 61)
+    data = await coord._async_update_data()
+    assert not coord.released
+    assert data["outgoing_temp"] == 96
+    assert coord.connections == 2
+
+
+async def test_on_demand_frees_the_link_when_idle_and_holds_it_when_active(hass, heater):
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_ADDRESS: ADDRESS}, options={"on_demand": True})
+    entry.add_to_hass(hass)
+    c = C.RinnaiCoordinator(hass, entry)
+
+    async def _connect(*_a, **_k):
+        heater.is_connected = True
+        heater.reasm.reset()
+        return heater
+
+    with patch.object(C, "establish_connection", _connect), patch.object(
+        C.RinnaiCoordinator, "_pick_device", return_value=object()
+    ):
+        data = await c._async_update_data()
+        assert data["outgoing_temp"] == 96
+        assert heater.disconnects == 1 and c._client is None
+        assert c.link_state == "idle"
+
+        heater.l_payload = fan_run(359, 2)    # heater running: keep the link, poll fast
+        await c._async_update_data()
+        assert heater.disconnects == 1 and c._client is not None
+        assert c.update_interval.total_seconds() == C.FAST_POLL_INTERVAL
+
+        heater.l_payload = fan_run(0)
+        await c._async_update_data()
+        assert heater.disconnects == 2
+        assert c.connections == 2
+
+
+class _Heard:
+    """What the Bluetooth history says about the heater's last advertisement."""
+
+    def __init__(self, clock, name="Rinnai RX  1234567890"):
+        self.clock, self.name, self.at = clock, name, clock[0]
+
+    def info(self, *_a, **_k):
+        return self if self.at is not None else None
+
+    @property
+    def time(self):
+        return self.at
+
+
+async def test_silence_means_in_use_elsewhere_and_its_return_reconnects(
+    hass, coord, heater, monkeypatch
+):
+    heater.silent = True
+    with pytest.raises(UpdateFailed):
+        await coord._async_update_data()
+    # Freeze the clock only now: the timeouts above need the real one.
+    clock = [C.time.monotonic()]
+    monkeypatch.setattr(C.time, "monotonic", lambda: clock[0])
+    heard = _Heard(clock)
+    monkeypatch.setattr(C.bluetooth, "async_last_service_info", heard.info)
+    refreshes = []
+
+    async def _refresh():
+        refreshes.append(clock[0])
+
+    monkeypatch.setattr(coord, "async_request_refresh", _refresh)
+
+    clock[0] += 5                             # advertising right after our own attempt
+    heard.at = clock[0]
+    coord._check_advertising()
+    await hass.async_block_till_done()
+    assert coord.in_use_elsewhere is False and refreshes == []
+    assert coord.link_state == "reconnecting"
+
+    clock[0] += 120                           # silent for two minutes: the app has it
+    coord._check_advertising()
+    assert coord.in_use_elsewhere is True
+    assert coord.link_state == "in_use_elsewhere"
+    assert coord.seconds_since_advertisement == 120
+    coord._next_connect = clock[0] + 300
+    with pytest.raises(UpdateFailed, match="another device"):
+        await coord._async_update_data()
+
+    clock[0] += 60                            # the app lets go; the heater is heard again
+    heard.at, heard.name = clock[0], "P Rinnai RX  1234567890"
+    coord._check_advertising()
+    await hass.async_block_till_done()
+    assert coord.in_use_elsewhere is False
+    assert len(refreshes) == 1 and coord._next_connect == 0
+    assert coord.unbonded_hint is True
+
+    coord._backoff = 300                      # failed again; no reconnect storm
+    clock[0] += 40
+    coord._check_advertising()                # silent again
+    clock[0] += 5
+    heard.at = clock[0]
+    coord._check_advertising()                # back within the minute
+    await hass.async_block_till_done()
+    assert len(refreshes) == 1
+
+
+async def test_own_connection_is_not_in_use_elsewhere(coord, heater, monkeypatch):
+    await coord._async_update_data()          # we hold the link; heater is silent
+    clock = [C.time.monotonic()]
+    monkeypatch.setattr(C.time, "monotonic", lambda: clock[0])
+    heard = _Heard(clock)
+    monkeypatch.setattr(C.bluetooth, "async_last_service_info", heard.info)
+    clock[0] += 600
+    coord._check_advertising()
+    assert coord.in_use_elsewhere is False and coord.link_state == "connected"
+
+    await coord.async_release_link(15)        # just let go: silence so far was ours
+    coord._check_advertising()
+    assert coord.in_use_elsewhere is False
+    clock[0] += 45                            # still silent: someone else connected
+    coord._check_advertising()
+    assert coord.in_use_elsewhere is True
+    assert coord.link_state == "released"     # released wins; the binary sensor shows the rest
+
+
+async def test_unknown_history_is_not_in_use(coord, heater):
+    heater.silent = True
+    with pytest.raises(UpdateFailed):
+        await coord._async_update_data()
+    coord._check_advertising()                # no Bluetooth manager in this test
+    assert coord.seconds_since_advertisement is None
+    assert coord.in_use_elsewhere is False
+
+
+async def test_setup_survives_an_unreachable_heater(hass, heater):
+    from homeassistant.config_entries import ConfigEntryState
+    from homeassistant.helpers import entity_registry as er
+
+    from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
+
+    hass.config.units = US_CUSTOMARY_SYSTEM
+    heater.silent = True
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_ADDRESS: ADDRESS}, unique_id=ADDRESS)
+    entry.add_to_hass(hass)
+
+    async def _connect(*_a, **_k):
+        heater.is_connected = True
+        heater.reasm.reset()
+        return heater
+
+    with patch.object(C, "establish_connection", _connect), patch.object(
+        C.RinnaiCoordinator, "_pick_device", return_value=object()
+    ), patch("homeassistant.components.bluetooth_adapters.async_setup", return_value=True), patch(
+        "homeassistant.loader.Integration.dependencies", new_callable=lambda: property(lambda s: [])
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        assert entry.state is ConfigEntryState.LOADED
+
+        reg = er.async_get(hass)
+        ent = reg.async_get_entity_id("sensor", DOMAIN, f"{ADDRESS}_outgoing_temp")
+        assert hass.states.get(ent).state == "unavailable"
+        ent = reg.async_get_entity_id("sensor", DOMAIN, f"{ADDRESS}_last_failure_stage")
+        assert hass.states.get(ent).state == "handshake"
+        link = reg.async_get_entity_id("sensor", DOMAIN, f"{ADDRESS}_link_state")
+        assert hass.states.get(link).state == "reconnecting"
+        busy = reg.async_get_entity_id("binary_sensor", DOMAIN, f"{ADDRESS}_in_use_elsewhere")
+        assert hass.states.get(busy).state == "off"
+
+        button = reg.async_get_entity_id("button", DOMAIN, f"{ADDRESS}_reconnect")
+        with pytest.raises(HomeAssistantError, match="Bluetooth LED"):   # still unreachable
+            await hass.services.async_call(
+                "button", "press", {"entity_id": button}, blocking=True
+            )
+
+        heater.silent = False                 # heater comes back; the button reconnects
+        await hass.services.async_call("button", "press", {"entity_id": button}, blocking=True)
+        await hass.async_block_till_done()
+        ent = reg.async_get_entity_id("sensor", DOMAIN, f"{ADDRESS}_outgoing_temp")
+        assert hass.states.get(ent).state == "96"
+        assert hass.states.get(link).state == "connected"
+
+        switch = reg.async_get_entity_id("switch", DOMAIN, f"{ADDRESS}_release_link")
+        await hass.services.async_call("switch", "turn_on", {"entity_id": switch}, blocking=True)
+        await hass.async_block_till_done()
+        assert hass.states.get(switch).state == "on"
+        assert hass.states.get(link).state == "released"
+        await hass.services.async_call(DOMAIN, "reconnect", {}, blocking=True)
+        await hass.async_block_till_done()
+        assert hass.states.get(switch).state == "off"
+
+        await hass.services.async_call(DOMAIN, "release_link", {"minutes": 5}, blocking=True)
+        assert entry.runtime_data.released
+        assert await hass.config_entries.async_unload(entry.entry_id)

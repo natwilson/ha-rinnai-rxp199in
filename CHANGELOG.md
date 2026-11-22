@@ -2,6 +2,56 @@
 
 Newest first. Each entry records *why*, since most of these were hard-won.
 
+## 1.5.0 — connection robustness, and sharing the link
+Prompted by a morning lost to re-bonding after the phone app was used
+(2026-11-22). The integration failed setup with "did not answer the `\I`
+session handshake", and the same error appeared once more *after* a good
+bond, then cleared by itself: so that error is not proof of a lost bond.
+In hindsight the bond was probably never lost that morning; the host's
+record was removed on the strength of that one error. The heater was later
+shown to hold the app's bond and Home Assistant's at the same time.
+
+- **`\I` handshake retried** three times on the same link, and a `\K` reply
+  counts as an open session, before the link is dropped.
+- **Setup no longer fails when the heater is unreachable.** Entities load
+  unavailable and the coordinator keeps retrying, instead of "Failed setup,
+  will retry" with every entity gone.
+- **Shows when another device has the heater.** It only advertises while
+  nothing is connected, so 30 s of silence while Home Assistant is not
+  connected turns on **In Use By Another Device** and sets the link state to
+  `in_use_elsewhere`; failure messages say so too. Off, out of range and
+  Bluetooth-off look the same.
+- **Reconnects when the heater is heard again.** The backoff wait (up to
+  5 min) is skipped, at most once a minute. The last-heard time is read from
+  Home Assistant's Bluetooth history every 5 s, because its advertisement
+  callbacks are skipped when the advertisement has not changed.
+- **Release Bluetooth Link** switch, `rinnai_ble.release_link` action and
+  **Reconnect Now** button / `rinnai_ble.reconnect` action, to keep Home
+  Assistant off the single connection without disabling the integration.
+  Tested end to end: released, the Rinnai app connected with its own pairing
+  (no button press), was disconnected (once with its Disconnect button, once
+  by force-closing it), and Home Assistant resumed on its existing bond both
+  times. The heater held both bonds.
+- **Reconnect Now explains a failure.** If the press cannot reach the heater
+  it raises an error with the reason and how to read the heater's Bluetooth
+  LED: solid means a device is connected, off means the heater is free.
+- **Lost bond detection.** A subscribe still refused after `pair()`, or repeated silent
+  links (3 with the `P ` name, 10 without), raises a repair notice with the
+  pairing steps. It clears on the next good poll. The `P ` prefix is a hint
+  only: it came and went during pairing.
+- **The `pair()` retry after a refused subscribe stays.** It was removed
+  during 1.5.0 development on the theory that it could only time out, and
+  the integration then could not reconnect after a re-pair even though the
+  same bond subscribed fine from `bluetoothctl`. With a good bond the link
+  can come up unencrypted, and `pair()` is what encrypts it.
+- **Health sensors:** link state, last failure stage (reason as attribute),
+  connection count, last good frame. Available while the heater is not.
+- **On-demand link option.** Disconnects after every idle poll and holds the
+  link only while the heater is active, so the app can connect between
+  polls. Also a way to soak-test repeated connect/disconnect cycles.
+- Bonding notes: the one-shot `bluetoothctl pair` hung in pairing mode; the
+  interactive session with `agent on` worked first time.
+
 ## 1.4.2 — Rinnai icon
 - Ships the Rinnai icon and logo in `custom_components/rinnai_ble/brand/`, which
   Home Assistant 2026.3 and newer use for custom integrations. Older versions
