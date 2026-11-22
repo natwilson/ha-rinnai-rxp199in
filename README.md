@@ -82,17 +82,29 @@ quit
 
 - Without the button press, pairing fails with `AuthenticationFailed` on any
   adapter. There is no passkey.
+- **Use the interactive session with `agent on`, as above.** The one-shot form
+  (`bluetoothctl pair AA:BB:…` from the shell) never completed on one host,
+  even with the heater in pairing mode, where it hung instead of failing; the
+  interactive `pair` then succeeded on the first try.
+- Right after a fresh bond the integration may report "did not answer the `\I`
+  session handshake" once. It cleared by itself within about a minute on one
+  unit; give it a couple of retries before bonding again.
 - If pairing is refused while the LED is only blinking, hold the button until
   the LED is solid and try again. One RX199i accepted pairing only with the
   LED solid (issue #1).
 - **Bonds are per adapter.** Change dongles and you must bond again.
-- **The heater appears to hold one bond at a time.** While bonded to one
-  adapter (or proxy) it refused another until the old bond was cleared.
+- **How many bonds the heater keeps is not settled.** One RX199i refused a
+  second adapter until the old bond was cleared (issue #1), but an RXP199iN
+  held the Rinnai app's bond and Home Assistant's at the same time (see
+  *The Rinnai app and other devices*).
 - With no bond stored, or in pairing mode, some units advertise as
   `P Rinnai RX  <serial>`; once bonded the name is plain
   `Rinnai RX  <serial>`. Both are discovered.
-- If the heater was re-paired with the phone, it has probably forgotten the
-  bond. A power cut may do the same, though one unit kept its bond through a
+- If a new device was paired with the heater, it may have forgotten Home
+  Assistant's bond (not established either way; see *The Rinnai app and
+  other devices*). When the integration is confident the bond is gone it raises a
+  **repair notice** (Settings → Repairs) with these steps, which clears by
+  itself once the heater answers again. A power cut may do the same, though one unit kept its bond through a
   60 s power cut and reconnected by itself. Symptoms: connections drop immediately with
   `NotConnected`, or the integration reports it "refused an encrypted
   connection". Bond again.
@@ -111,6 +123,75 @@ Settings → Devices & Services → Rinnai → **Configure**:
 - **Fast polling while active:** on by default. While the fan, burner, pump or
   flow is active, the heater is read every 5 seconds instead of the poll
   interval, so short events are caught. Turn it off if your link struggles.
+
+- **On-demand link:** off by default. When on, Home Assistant disconnects
+  after every idle poll and reconnects for the next one, holding the link only
+  while the heater is running, so the heater's Bluetooth LED is off and the
+  link is free between polls. Events that start and finish between two polls
+  can be missed. The app can then connect between polls without touching the
+  Release switch, though Home Assistant will retry while the app is connected.
+
+## The Rinnai app and other devices
+
+**The heater accepts one Bluetooth connection at a time**, so Home Assistant
+and the Rinnai Central app (or a technician's tool) take turns. They do not
+have to fight over the pairing: on an RXP199iN (2026-11-22), with Home
+Assistant released, the app connected using its own earlier pairing, with no
+press of the heater's button, and after the app disconnected Home Assistant
+resumed on its existing bond without re-pairing. The heater was holding both
+bonds.
+
+Things to know:
+
+- **Disconnect the app when done.** Sending the app to the background keeps
+  its connection, and the heater stays in use. Pressing Disconnect in the
+  app, or force-closing it, releases the heater; after a force-close Home
+  Assistant reconnected on the first try.
+- **A new pairing may be different.** That test reused existing pairings. One
+  owner's heater refused a second adapter until the first bond was cleared
+  (issue #1), so pairing a *new* device with the button may still displace
+  an older bond. If Home Assistant's bond is refused afterwards, pair again
+  as in *Bonding*.
+- Do not remove Home Assistant's pairing record on the strength of one failed
+  connection. A single "did not answer the `\I` session handshake" is usually
+  transient.
+
+What the integration does about it:
+
+- **In Use By Another Device** turns on when the heater has stopped
+  advertising for 30 seconds while Home Assistant is not the one connected.
+  The heater only advertises while nothing is connected to it, so this is on
+  while the app or another device holds the connection, and **Bluetooth Link
+  State** reads `in_use_elsewhere`. It turns off within a few seconds of the
+  other device letting go, and Home Assistant then reconnects by itself. A
+  heater that is powered off, out of range or has its Bluetooth off looks
+  the same from here.
+- The **Release Bluetooth Link** switch (or `rinnai_ble.release_link` with
+  `minutes`) disconnects Home Assistant and keeps it off the heater so the
+  app or a technician can connect; it turns itself off after 15 minutes.
+  Also use it while pairing from `bluetoothctl`.
+- If the heater really does refuse Home Assistant's bond (the subscribe is
+  still rejected after asking for encryption), **Bluetooth Link State** reads
+  `bond_lost` and a repair notice appears with the pairing steps.
+- **Reconnect Now** (or `rinnai_ble.reconnect`) ends a release or a reconnect
+  wait immediately, for example right after re-pairing. If the press fails,
+  Home Assistant shows a pop-up with the reason and what to check.
+- **Reading the heater's Bluetooth LED:** solid means a device is connected
+  to the heater (Home Assistant, the app, or something else); off means the
+  heater is free. Home Assistant reconnected with the LED off, so it does not
+  need to be lit first. If it is solid and Home Assistant is not connected,
+  disconnect the other device. Do not press the heater's Bluetooth button to
+  "wake" it: that starts pairing mode.
+
+After re-pairing, the first connection attempts can fail for a minute or so
+("did not answer the `\I` session handshake", or `GATT Protocol Error:
+Unlikely Error` on the subscribe) before one succeeds.
+
+Four diagnostic sensors show what the link is doing: **Bluetooth Link State**
+(connected, idle, released, in_use_elsewhere, reconnecting, bond_lost), **Last Connection
+Failure** (the stage that failed, with the reason as an attribute),
+**Bluetooth Connections** (count since start) and **Last Good Frame**. They
+stay available while the heater is unreachable.
 
 ## Low-flow lockout alerts
 
@@ -167,6 +248,15 @@ can still be missed, so treat the count as a lower bound.
 - **Stalls are fixed in place first.** If `\L` stops answering, the session
   handshake is re-sent on the same link; the link is only rebuilt after three
   failed polls in a row.
+- **A failed start does not fail setup.** If the heater is busy or out of
+  range when Home Assistant starts, the entities load as unavailable and the
+  integration keeps retrying.
+- **The session handshake is retried** three times on the same link, and a
+  status reply counts as an open session.
+- **It reconnects as soon as the heater is free.** The heater only advertises
+  while nothing is connected, so when it is heard again after another device
+  was connected, the reconnect wait is skipped. The last-heard time comes
+  from Home Assistant's Bluetooth history, checked every 5 seconds.
 - **Reconnects back off** (30 s doubling to 5 min) so a busy adapter isn't
   hammered. Fast polling stops whenever a poll fails.
 - **Corrupt data is never shown.** Fragments are reassembled by sequence number
@@ -178,6 +268,8 @@ can still be missed, so treat the count as a lower bound.
 |---|---|
 | `refused an encrypted connection`, `Insufficient encryption` | Not bonded with this adapter. See *Bonding* |
 | Setup retries with `NotConnected` | The heater drops the link right after connecting: usually a lost bond, sometimes the phone app holding the connection. Close the app, then bond again |
+| `did not answer the \I session handshake` | The link opened but the heater stayed silent. Seen briefly right after bonding; if it persists and a repair notice appears, the bond was replaced. See *Bonding* |
+| `GATT Protocol Error: Unlikely Error` | The heater rejected the subscribe. Seen once on the first attempt after re-pairing; the next retry connected |
 | `heater not currently visible` | No adapter can see it. Check range, close `bluetoothctl` and the phone app (the heater stops advertising while anything is connected) |
 | `\L has not answered for 3 polls; reconnecting` now and then | Normal recovery. If constant, suspect RF: use a USB extension cable away from USB 3 ports |
 | Other Bluetooth devices got slower | Shared adapter. See *Requirements* |
@@ -191,7 +283,8 @@ logger:
 ```
 
 **Only one central at a time:** the heater accepts a single connection, so the
-Rinnai Central app and Home Assistant compete. Keep the app closed.
+Rinnai Central app and Home Assistant take turns. See *The Rinnai app and
+other devices* above.
 
 ## Development
 

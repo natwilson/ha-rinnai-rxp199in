@@ -20,12 +20,13 @@
   "options": {
     "step": {
       "init": {
-        "description": "Bonds are stored per adapter, so pin the adapter you paired the heater with if you have more than one. Keep the poll interval at 30 seconds or more for normal use. The minimum firing rate is from your model's data sheet (15,000 BTU/h for the RXP199iN); it sets the Low-Fire Margin. Fast polling reads the heater every 5 seconds while it is active, so short events such as false starts are caught; turn it off if your Bluetooth link struggles.",
+        "description": "Bonds are stored per adapter, so pin the adapter you paired the heater with if you have more than one. Keep the poll interval at 30 seconds or more for normal use. The minimum firing rate is from your model's data sheet (15,000 BTU/h for the RXP199iN); it sets the Low-Fire Margin. Fast polling reads the heater every 5 seconds while it is active, so short events such as false starts are caught; turn it off if your Bluetooth link struggles. On-demand link disconnects after every idle poll and holds the link only while the heater is running. The Rinnai app can then connect between polls.",
         "data": {
           "scan_interval": "Poll interval (seconds)",
           "adapter": "Bluetooth adapter",
           "min_firing_rate": "Minimum firing rate (BTU/h)",
-          "fast_poll": "Fast polling while the heater is active"
+          "fast_poll": "Fast polling while the heater is active",
+          "on_demand": "On-demand link (disconnect between polls)"
         }
       }
     }
@@ -48,6 +49,26 @@
           "description": "Must be on. This writes an unverified command to a gas appliance."
         }
       }
+    },
+    "release_link": {
+      "name": "Release Bluetooth link",
+      "description": "Disconnects from the heater and stays off it for a while. The heater accepts one Bluetooth connection at a time, so use this before opening the Rinnai app or when a technician needs to connect. When done, press Disconnect in the app or force-close it; in the background it keeps the connection.",
+      "fields": {
+        "minutes": {
+          "name": "Minutes",
+          "description": "How long to stay disconnected."
+        }
+      }
+    },
+    "reconnect": {
+      "name": "Reconnect now",
+      "description": "Ends a release or a reconnect wait and connects to the heater immediately."
+    }
+  },
+  "issues": {
+    "bond_lost": {
+      "title": "Rinnai heater needs pairing again",
+      "description": "The heater at {address} keeps refusing this adapter's Bluetooth bond, even after asking for an encrypted link. This can happen after a new device was paired with the heater.\n\nTurn on *Release Bluetooth Link*, then on the Home Assistant host run `bluetoothctl` interactively: `remove {address}`, `agent on`, `default-agent`, hold the heater's Bluetooth button until its LED is solid, then `pair {address}` and `trust {address}`, `disconnect {address}`, `quit`. Then press *Reconnect Now*; the first attempts can fail for about a minute. (The heater's Bluetooth LED is solid while a device is connected and off while the heater is free.) See *Bonding* in the README. This notice clears by itself once the heater answers again."
     }
   }
 }

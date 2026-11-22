@@ -58,7 +58,10 @@ async def async_setup_entry(
     entry: RinnaiConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    async_add_entities(RinnaiBinarySensor(entry.runtime_data, d) for d in BINARY_SENSORS)
+    coordinator = entry.runtime_data
+    async_add_entities(
+        [*(RinnaiBinarySensor(coordinator, d) for d in BINARY_SENSORS), RinnaiInUseElsewhere(coordinator)]
+    )
 
 
 class RinnaiBinarySensor(RinnaiEntity, BinarySensorEntity):
@@ -72,3 +75,33 @@ class RinnaiBinarySensor(RinnaiEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         return self._value
+
+
+class RinnaiInUseElsewhere(RinnaiEntity, BinarySensorEntity):
+    """On while the heater is silent and Home Assistant is not the one connected.
+
+    The heater advertises only while nothing is connected to it, so this is on
+    while the Rinnai app or another device holds the connection. A heater that
+    is powered off, out of range or has its Bluetooth off looks the same.
+    Stays available while the heater is unreachable: that is when it matters.
+    """
+
+    _attr_name = "In Use By Another Device"
+    _attr_icon = "mdi:cellphone-link"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "in_use_elsewhere")
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.in_use_elsewhere
+
+    @property
+    def extra_state_attributes(self):
+        age = self.coordinator.seconds_since_advertisement
+        return {"seconds_since_advertisement": None if age is None else round(age)}

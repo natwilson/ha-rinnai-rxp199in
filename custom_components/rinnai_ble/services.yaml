@@ -17,3 +17,13 @@ experimental_write_k:
       default: false
       selector:
         boolean:
+release_link:
+  fields:
+    minutes:
+      default: 15
+      selector:
+        number:
+          min: 1
+          max: 240
+          unit_of_measurement: min
+reconnect:
